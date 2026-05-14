@@ -1,0 +1,247 @@
+<style>
+	.pt-return {
+		padding: 15mm;
+		font-size: 8.5pt;
+		font-family: Tahoma, sans-serif;
+	}
+
+	.pt-return .meta-row {
+		display: flex;
+		gap: 6px;
+		justify-content: center;
+		margin-bottom: 14px;
+	}
+	.pt-return .meta-badge {
+		background: #f0f4ff;
+		border: 1px solid #c0cef0;
+		color: #2a4a8a;
+		border-radius: 10px;
+		padding: 2px 12px;
+		font-size: 8pt;
+		font-weight: bold;
+	}
+	.pt-return .meta-badge.return-type {
+		background: #fff3e0;
+		border-color: #f0c080;
+		color: #7a4200;
+	}
+	.pt-return table.table th {
+		background-color: #f2f2f2;
+		color: #333;
+		font-weight: bold;
+		font-size: 8pt;
+		vertical-align: middle;
+	}
+	.pt-return table.table td {
+		vertical-align: middle;
+		font-size: 8.5pt;
+	}
+	.pt-return table.table td.label-col {
+		background-color: #f9f9f9;
+		font-weight: normal;
+		color: #444;
+		width: 44%;
+	}
+	.pt-return table.table tr.total-row td {
+		background-color: #f2f2f2;
+		font-weight: bold;
+	}
+	.pt-return table.table tr.bold-row td {
+		font-weight: bold;
+		background-color: #f5f5f5;
+	}
+	.pt-return .headcount-row {
+		display: flex;
+		gap: 12px;
+		margin: 12px 0 12px 0;
+	}
+	.pt-return .headcount-box {
+		flex: 1;
+		border: 1px solid #dee2e6;
+		border-radius: 4px;
+		padding: 10px 14px;
+		background: #fafafa;
+	}
+	.pt-return .hc-label { font-size: 7.5pt; color: #777; margin-bottom: 2px; }
+	.pt-return .hc-value { font-size: 18pt; font-weight: bold; color: #222; line-height: 1.1; }
+	.pt-return .hc-sub { font-size: 7pt; color: #999; margin-top: 2px; }
+	.pt-return .late-note {
+		background: #fffbf0;
+		border: 1px solid #f0d080;
+		border-radius: 4px;
+		padding: 8px 14px;
+		font-size: 8pt;
+		margin: 14px 0 8px 0;
+		color: #604000;
+	}
+	.pt-return .declaration-text {
+		font-size: 8pt;
+		line-height: 1.7;
+		margin: 10px 0;
+		color: #333;
+	}
+	.pt-return .sig-footer {
+		display: flex;
+		justify-content: space-between;
+		margin-top: 28px;
+		font-size: 8pt;
+		color: #444;
+	}
+	.pt-return .sig-footer .sig-label { color: #888; font-size: 7.5pt; margin-top: 3px; }
+</style>
+
+<div class="pt-return">
+
+	<h3 class="text-center">Form II &mdash; Monthly Profession Tax Return</h3>
+	<div class="meta-row">
+		<span class="meta-badge">Month: {{ data.period }}</span>
+		<span class="meta-badge return-type">Monthly Return</span>
+	</div>
+
+	<!-- PART I: EMPLOYER DETAILS -->
+	<div class="section-title">PART I &mdash; EMPLOYER DETAILS</div>
+	<table class="table table-bordered">
+		<tbody>
+			<tr><td class="label-col">Employer / Company Name</td><td>{{ data.employer.company }}</td></tr>
+			<tr><td class="label-col">PT Registration No. (PTRC)</td><td>{{ data.employer.ptan }}</td></tr>
+			<tr><td class="label-col">PAN</td><td>{{ data.employer.pan }}</td></tr>
+			<tr><td class="label-col">Return for the month of</td><td>{{ data.period }}</td></tr>
+			<tr><td class="label-col">Due date of filing</td><td>{{ data.employer.due_date }}</td></tr>
+			<tr><td class="label-col">Registered address</td><td>{{ data.employer.address }}</td></tr>
+			<tr><td class="label-col">Circle / Ward</td><td></td></tr>
+		</tbody>
+	</table>
+
+	<!-- PART II: SALARY SLAB WISE EMPLOYEE DETAILS -->
+	<div class="section-title">PART II &mdash; SALARY SLAB WISE EMPLOYEE DETAILS FOR THE MONTH</div>
+	<table class="table table-bordered text-center">
+		<thead>
+			<tr>
+				<th rowspan="2" style="width:4%">Sr.</th>
+				<th rowspan="2" style="width:26%;text-align:left;">Monthly Salary / Wage Slab (&#8377;)</th>
+				<th rowspan="2">PT Rate<br>(&#8377;/month)</th>
+				<th colspan="3">No. of Employees</th>
+				<th colspan="3">PT Amount Deducted (&#8377;)</th>
+				<th rowspan="2">Remarks</th>
+			</tr>
+			<tr>
+				<th>Male</th>
+				<th>Female</th>
+				<th>Total</th>
+				<th>Male</th>
+				<th>Female</th>
+				<th>Total</th>
+			</tr>
+		</thead>
+		<tbody>
+			{% for row in data.part_a %}
+			<tr>
+				<td>{{ row._index + 1 }}</td>
+				<td style="text-align:left;">{{ row.slab_label }}</td>
+				<td>{{ row.pt_rate }}</td>
+				<td>{{ row.male_count }}</td>
+				<td>{{ row.female_count }}</td>
+				<td>{{ row.total_count }}</td>
+				<td>{{ row.male_pt }}</td>
+				<td>{{ row.female_pt }}</td>
+				<td>{{ row.total_pt }}</td>
+				<td></td>
+			</tr>
+			{% endfor %}
+			<tr class="total-row">
+				<td colspan="2" style="text-align:left;">Total</td>
+				<td>&mdash;</td>
+				<td>{{ data.totals.male_count }}</td>
+				<td>{{ data.totals.female_count }}</td>
+				<td>{{ data.totals.total_count }}</td>
+				<td>{{ data.totals.male_pt }}</td>
+				<td>{{ data.totals.female_pt }}</td>
+				<td>{{ data.totals.total_pt }}</td>
+				<td></td>
+			</tr>
+		</tbody>
+	</table>
+
+	<!-- PART III: NEW JOINERS & SEPARATIONS -->
+	<div class="section-title">PART III &mdash; NEW JOINERS &amp; SEPARATIONS DURING THE MONTH</div>
+	<table class="table table-bordered text-center">
+		<thead>
+			<tr>
+				<th style="width:4%">Sr.</th>
+				<th style="width:18%;text-align:left;">Employee Name</th>
+				<th style="width:11%">Employee ID</th>
+				<th style="width:13%;text-align:left;">Designation</th>
+				<th style="width:13%">Date of Joining / Leaving</th>
+				<th style="width:11%">Salary (&#8377;/month)</th>
+				<th style="width:13%;text-align:left;">PT Slab Applicable</th>
+				<th>Remarks</th>
+			</tr>
+		</thead>
+		<tbody>
+			{% if data.part_c.length %}
+			{% for row in data.part_c %}
+			<tr>
+				<td>{{ row._index + 1 }}</td>
+				<td style="text-align:left;">{{ row.employee_name }}</td>
+				<td>{{ row.employee }}</td>
+				<td style="text-align:left;">{{ row.designation }}</td>
+				<td>{{ row.event_date }}</td>
+				<td>{{ row.salary }}</td>
+				<td style="text-align:left;">{{ row.slab_label }}</td>
+				<td>
+					<span style="background:{{ row.badge_color }};color:#fff;border-radius:10px;padding:2px 10px;font-size:7.5pt;white-space:nowrap;">
+						{{ row.event_type }}
+					</span>
+				</td>
+			</tr>
+			{% endfor %}
+			{% else %}
+			<tr>
+				<td colspan="8" style="text-align:center;color:#999;font-style:italic;padding:12px;">
+					No new joiners or separations this month
+				</td>
+			</tr>
+			{% endif %}
+		</tbody>
+	</table>
+
+	<div class="headcount-row">
+		<div class="headcount-box">
+			<div class="hc-label">Opening headcount</div>
+			<div class="hc-value">{{ data.headcount.opening }}</div>
+			<div class="hc-sub">as of {{ data.headcount.opening_date }}</div>
+		</div>
+		<div class="headcount-box">
+			<div class="hc-label">Joined this month</div>
+			<div class="hc-value">+{{ data.headcount.joined }}</div>
+			<div class="hc-sub">new employees</div>
+		</div>
+		<div class="headcount-box">
+			<div class="hc-label">Left this month</div>
+			<div class="hc-value">&minus;{{ data.headcount.left }}</div>
+			<div class="hc-sub">separations</div>
+		</div>
+		<div class="headcount-box">
+			<div class="hc-label">Closing headcount</div>
+			<div class="hc-value">{{ data.headcount.closing }}</div>
+			<div class="hc-sub">as of {{ data.headcount.closing_date }}</div>
+		</div>
+	</div>
+
+	<!-- PART IV: TAX COMPUTATION & CHALLAN DETAILS -->
+	<div class="section-title">PART IV &mdash; TAX COMPUTATION</div>
+	<table class="table table-bordered">
+		<tbody>
+			<tr><td class="label-col">Total PT deducted from employees (A)</td><td>{{ data.part_iv.pt_deducted }}</td></tr>
+			<tr><td class="label-col">Employer&#39;s own PT liability (B)</td><td>{{ data.part_iv.employer_pt }}</td></tr>
+			<tr><td class="label-col">Arrears / Short payment from previous month (C)</td><td>{{ data.part_iv.arrears }}</td></tr>
+			<tr><td class="label-col">Interest on late payment (D) &mdash; Rule 20</td><td>{{ data.part_iv.interest }}</td></tr>
+			<tr><td class="label-col">Penalty, if any (E)</td><td>{{ data.part_iv.penalty }}</td></tr>
+			<tr class="bold-row"><td class="label-col">Total tax payable (A+B+C+D+E)</td><td>{{ data.part_iv.total_payable }}</td></tr>
+		</tbody>
+	</table>
+
+	<div class="late-note">
+		<b>Note on late payment interest:</b> If tax is paid after the 15th of the following month, interest is levied at 1.25% per month on the outstanding amount under Rule 20 of the Maharashtra PT Rules, 1975.
+	</div>
+</div>
