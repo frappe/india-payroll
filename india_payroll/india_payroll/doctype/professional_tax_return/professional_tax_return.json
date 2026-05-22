@@ -1,0 +1,92 @@
+{
+ "actions": [],
+ "creation": "2026-05-13 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "form",
+  "company",
+  "professional_tax_state",
+  "column_break_3",
+  "year",
+  "filing_frequency",
+  "month_or_quarter",
+  "report_section",
+  "pt_return_html"
+ ],
+ "fields": [
+  {
+   "fieldname": "form",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "fieldname": "professional_tax_state",
+   "fieldtype": "Autocomplete",
+   "label": "Professional Tax State",
+   "options": "Andhra Pradesh\nArunachal Pradesh\nAssam\nBihar\nChhattisgarh\nGoa\nGujarat\nHaryana\nHimachal Pradesh\nJharkhand\nKarnataka\nKerala\nMadhya Pradesh\nMaharashtra\nManipur\nMeghalaya\nMizoram\nNagaland\nOdisha\nPunjab\nRajasthan\nSikkim\nTamil Nadu\nTelangana\nTripura\nUttar Pradesh\nUttarakhand\nWest Bengal\nAndaman and Nicobar Islands\nChandigarh\nDadra and Nagar Haveli and Daman and Diu\nDelhi\nJammu and Kashmir\nLadakh\nLakshadweep\nPuducherry",
+   "reqd": 1
+  },
+  {
+   "fieldname": "year",
+   "fieldtype": "Autocomplete",
+   "label": "Year",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "filing_frequency",
+   "fieldtype": "Select",
+   "label": "Filing Frequency",
+   "options": "\nMonthly\nQuarterly",
+   "reqd": 1
+  },
+  {
+   "fieldname": "month_or_quarter",
+   "fieldtype": "Select",
+   "label": "Month/Quarter",
+   "reqd": 1
+  },
+  {
+   "fieldname": "report_section",
+   "fieldtype": "Section Break",
+   "hide_border": 1
+  },
+  {
+   "fieldname": "pt_return_html",
+   "fieldtype": "HTML",
+   "label": "PT Return"
+  }
+ ],
+ "hide_toolbar": 1,
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-05-14 15:52:47.790224",
+ "modified_by": "Administrator",
+ "module": "India Payroll",
+ "name": "Professional Tax Return",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

@@ -62,6 +62,13 @@ def get_custom_fields():
 				"fieldtype": "Check",
 				"insert_after": "india_payroll_professional_tax_section",
 			},
+			{
+				"fieldname": "professional_tax_enrollment_number",
+				"label": "Professional Tax Enrollment Number",
+				"fieldtype": "Data",
+				"insert_after": "enable_professional_tax",
+				"depends_on": "eval:doc.enable_professional_tax == 1",
+			},
 		],
 		"Employee": [
 			{
