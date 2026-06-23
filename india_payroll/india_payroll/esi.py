@@ -90,6 +90,8 @@ def _update_esi_in_salary_slip(doc, esi: float) -> None:
 def _recalculate_totals(doc) -> None:
 	"""Recompute total_deduction and net_pay after modifying deduction rows."""
 	doc.total_deduction = sum(flt(d.amount) for d in doc.deductions if not d.do_not_include_in_total)
-	doc.net_pay = flt(doc.gross_pay) - flt(doc.total_deduction)
+	# Loan repayment is tracked outside `deductions` (see Salary Slip.set_net_pay),
+	# so subtract it explicitly or net pay comes out too high.
+	doc.net_pay = flt(doc.gross_pay) - (flt(doc.total_deduction) + flt(doc.get("total_loan_repayment")))
 	if hasattr(doc, "rounded_total"):
 		doc.rounded_total = round(doc.net_pay)
