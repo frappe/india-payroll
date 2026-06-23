@@ -15,10 +15,20 @@ export function renderComparison(ctrl, result) {
 
 	// A regime choice rendered as a radio card. Picking it stages the choice; the
 	// staged card gets a colored border (green, or blue on a tie). Label precedence
-	// is Selected > Suggested/Default.
+	// is Selected > Suggested/Default. The regime in force is the saved choice (when
+	// it still matches a current card), or - on a submitted/locked SSA with nothing
+	// valid saved - New Regime as the system default.
 	const regime_card = (label, regime, is_winner, tie_pill) => {
 		const is_staged = ctrl.staged_slab === regime.slab;
-		const is_selected = ctrl.selected_slab === regime.slab;
+		// The saved regime, but only if it still matches one of the two cards. A blank
+		// field - or a stale/unknown slab name - counts as "nothing saved".
+		const saved_slab =
+			ctrl.selected_slab === old.slab || ctrl.selected_slab === new_.slab
+				? ctrl.selected_slab
+				: null;
+		// Drafts keep no default so the employee actively picks one.
+		const effective_slab = saved_slab || (ctrl.is_submitted ? new_.slab : null);
+		const is_selected = effective_slab && regime.slab === effective_slab;
 
 		let pill_color = "";
 		let pill_label = "";
@@ -26,7 +36,9 @@ export function renderComparison(ctrl, result) {
 			pill_color = "green";
 			pill_label = __("Selected");
 		} else if (is_tie) {
-			if (tie_pill) {
+			// Blue "Default" marks New as the tie-breaker default, only while no valid
+			// regime is saved - never override an explicit, matching choice.
+			if (tie_pill && !saved_slab) {
 				pill_color = "blue";
 				pill_label = __("Default");
 			}
@@ -39,7 +51,10 @@ export function renderComparison(ctrl, result) {
 			? `<span class="badge indicator-pill ${pill_color} no-indicator-dot" style="flex-shrink:0;">${pill_label}</span>`
 			: "";
 
-		const border = is_staged
+		// In draft the staged radio drives the border; on a submitted SSA there is no
+		// staging, so the in-force (selected) card carries the highlight instead.
+		const is_highlighted = is_staged || (ctrl.is_submitted && is_selected);
+		const border = is_highlighted
 			? is_tie
 				? "var(--blue-500)"
 				: "var(--green-500)"
@@ -54,7 +69,9 @@ export function renderComparison(ctrl, result) {
 			  } style="width:16px; height:16px; margin:0; flex-shrink:0;">`;
 
 		return `
-		<label class="regime-radio-card frappe-card" style="flex:1 1 200px; min-width:200px; max-width:100%; margin:0; padding:14px 16px; ${
+		<label class="regime-radio-card${
+			ctrl.is_submitted ? " no-hover" : ""
+		} frappe-card" style="flex:1 1 200px; min-width:200px; max-width:100%; margin:0; padding:14px 16px; ${
 			ctrl.is_submitted ? "" : "cursor:pointer;"
 		} display:block;
 			border:1px solid ${border};">
@@ -96,8 +113,10 @@ export function renderComparison(ctrl, result) {
 	$("#comparison-alert").html("");
 
 	// Save Regime lives in the page toolbar (top-right); shown only for editable
-	// (draft) assignments when a regime is selected. Submitted SSAs are read-only.
-	if (ctrl.staged_slab && !ctrl.is_submitted) {
+	// (draft) assignments once the staged choice is a real, current regime. A stale
+	// staged slab keeps it hidden until the user picks one. Submitted SSAs are read-only.
+	const staged_valid = ctrl.staged_slab === old.slab || ctrl.staged_slab === new_.slab;
+	if (staged_valid && !ctrl.is_submitted) {
 		ctrl.page.set_primary_action(__("Save Regime"), () => ctrl.save_regime());
 	} else {
 		ctrl.page.clear_primary_action();
@@ -108,7 +127,7 @@ export function renderComparison(ctrl, result) {
 			${regime_card(__("Old Regime"), old, !is_tie && old_wins, false)}
 			${regime_card(__("New Regime"), new_, !is_tie && !old_wins, true)}
 		</div>
-		<div class="form-message ${alert_color}" style="margin-bottom:12px; font-weight:normal; margin-right:15px; flex-shrink:0;">
+		<div class="form-message ${alert_color}" style="margin-bottom:12px; font-weight:normal; margin-right:15px; flex-shrink:0; border-radius:var(--border-radius);">
 			${winner_label}
 		</div>
 		<div style="display:flex; flex-direction:column; border:1px solid var(--border-color); border-radius:var(--border-radius); overflow:hidden; font-size:var(--text-sm); margin-right:15px; flex:1; min-height:0;">

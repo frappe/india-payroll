@@ -6,15 +6,22 @@ from datetime import date
 
 import frappe
 from frappe.utils import flt, getdate
-from hrms.payroll.doctype.income_tax_slab.income_tax_slab import calculate_tax_by_tax_slab
-from hrms.payroll.doctype.salary_structure_assignment.salary_structure_assignment import (
-	PERIODS_PER_YEAR,
-)
+from hrms.payroll.doctype.salary_slip.salary_slip import calculate_tax_by_tax_slab
 
 from india_payroll.india_payroll.tax_exemption_setup import (
 	EXEMPTION_CATEGORIES,
 	setup_tax_exemption_categories,
 )
+
+# Payroll periods per year by Salary Structure payroll frequency. Kept local so the
+# page does not depend on an HRMS internal constant (which has moved/been removed).
+PERIODS_PER_YEAR = {
+	"Monthly": 12,
+	"Fortnightly": 26,
+	"Bimonthly": 24,
+	"Weekly": 52,
+	"Daily": 365,
+}
 
 OLD_REGIME_SLAB = "Old Tax Regime: 2019"
 NEW_REGIME_SLAB = "New Tax Regime: 2025-2026"
@@ -161,8 +168,11 @@ def compute_tax_comparison(
 	old_slab = frappe.get_doc("Income Tax Slab", OLD_REGIME_SLAB)
 	new_slab = frappe.get_doc("Income Tax Slab", NEW_REGIME_SLAB)
 
-	old_tax, _ = calculate_tax_by_tax_slab(old_taxable, old_slab)
-	new_tax, _ = calculate_tax_by_tax_slab(new_taxable, new_slab)
+	# Pass empty eval dicts: the standard slabs carry no row conditions, but the HRMS
+	# helper does eval_locals.update(...) for incomes above tax_relief_limit and would
+	# fail on the default None.
+	old_tax, _ = calculate_tax_by_tax_slab(old_taxable, old_slab, {}, {})
+	new_tax, _ = calculate_tax_by_tax_slab(new_taxable, new_slab, {}, {})
 
 	return {
 		"old_regime": {
@@ -235,8 +245,10 @@ def notify_employee_to_select_tax_regime(assignment: str) -> dict:
 		message=frappe._(
 			"Dear {0},<br><br>"
 			"Please select your preferred income tax regime for the current payroll period "
-			"using the Tax Regime Selector:<br><br>"
-			'<a href="{1}">Open Tax Regime Selector</a><br><br>'
+			"using the Tax Regime Selector:"
+			'<p style="margin: 15px 0px;">'
+			'<a href="{1}" class="btn btn-primary" target="_blank">Open Tax Regime Selector</a>'
+			"</p>"
 			"Regards,<br>HR Team"
 		).format(ssa.employee_name or "", link),
 		reference_doctype="Salary Structure Assignment",

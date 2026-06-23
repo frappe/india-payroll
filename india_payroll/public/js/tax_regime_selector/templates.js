@@ -60,9 +60,12 @@ export function mainLayout(hasHra) {
 	return `
 		<div style="display:flex; gap:15px; align-items:flex-start;">
 			<div style="flex:0 0 65%; max-width:65%; min-width:0;">
-				<div class="frappe-card" style="padding: 16px; max-height:80vh; display:flex; flex-direction:column;">
-					<div style="display:flex; justify-content:flex-end; flex-shrink:0; margin-bottom:12px;">
-						<button class="btn btn-default btn-sm declare-btn">
+				<div class="frappe-card" style="padding: 16px; max-height:calc(80vh + 1rem); display:flex; flex-direction:column;">
+					<div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-shrink:0; margin-bottom:16px;">
+						<span style="font-size:var(--text-lg); font-weight:600;">${__(
+							"Add your exemptions to compare tax in both regimes"
+						)}</span>
+						<button class="btn btn-default btn-sm declare-btn" style="white-space:nowrap;">
 							${__("Declare Tax Exemptions →")}
 						</button>
 					</div>
@@ -82,8 +85,8 @@ export function mainLayout(hasHra) {
 							)}</h6>
 							<div style="display:flex; align-items:center; gap:8px;">
 								<div style="position:relative;" id="declaration-search-wrapper">
-									<span style="position:absolute; left:8px; top:50%; transform:translateY(-50%); display:inline-flex; color:var(--text-muted); pointer-events:none;">
-										<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+									<span style="position:absolute; left:8px; top:50%; transform:translateY(-50%); display:inline-flex; color:var(--gray-500); --icon-stroke:var(--gray-500); pointer-events:none; z-index:2;">
+										${frappe.utils.icon("search", "sm")}
 									</span>
 									<input type="text" class="form-control input-sm" id="declaration-search"
 										placeholder="${__("Search")}" style="padding-left:28px;">
@@ -99,7 +102,7 @@ export function mainLayout(hasHra) {
 					</div>
 				</div>
 			</div>
-			<div style="flex:0 0 35%; max-width:35%; min-width:0; position:sticky; top:0; margin-right:15px; max-height:80vh; display:flex; flex-direction:column;" id="comparison-panel">
+			<div style="flex:0 0 35%; max-width:35%; min-width:0; position:sticky; top:0; margin-right:15px; max-height:calc(80vh + 1rem); display:flex; flex-direction:column;" id="comparison-panel">
 				<div class="text-center text-muted" style="padding: 40px 0;">
 					${__("Computing...")}
 				</div>

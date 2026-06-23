@@ -94,7 +94,7 @@ after_migrate = "india_payroll.install.after_migrate"
 # Uninstallation
 # ------------
 
-# before_uninstall = "india_payroll.uninstall.before_uninstall"
+before_uninstall = "india_payroll.uninstall.before_uninstall"
 # after_uninstall = "india_payroll.uninstall.after_uninstall"
 
 # Integration Setup
