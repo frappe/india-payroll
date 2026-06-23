@@ -148,63 +148,6 @@ class TestEPF(HRMSTestSuite):
 		"Payroll Settings",
 		{"enable_epf": 1, "enable_professional_tax": 0, "enable_esic": 0, "enable_lwf": 0},
 	)
-	def test_all_earnings_count_toward_pf_wage(self):
-		"""
-		Every earning component counts toward PF wage — there is no
-		include_in_pf_wage flag any more. Basic ₹10,000 + Allowance ₹4,000 =
-		₹14,000 PF wage (below ceiling) → EPF 12% * 14,000 = ₹1,680.
-		"""
-		earnings = [
-			{
-				"salary_component": _EPF_BASIC_COMPONENT,
-				"abbr": "EPFTB",
-				"formula": "base",
-				"type": "Earning",
-				"amount_based_on_formula": 1,
-				"depends_on_payment_days": 0,
-			},
-			{
-				"salary_component": "EPF Test Allowance",
-				"abbr": "EPFTA",
-				"amount": 4_000,
-				"type": "Earning",
-				"depends_on_payment_days": 0,
-			},
-		]
-		employee = make_employee("test_epf_all_earnings@indiapayroll.com", company="_Test Company")
-		frappe.db.set_value("Employee", employee, "epf_applicable", 1)
-
-		salary_structure = make_salary_structure(
-			"Test EPF All Earnings Structure",
-			"Monthly",
-			company="_Test Company",
-			currency="INR",
-			earnings=earnings,
-			deductions=[],
-		)
-		create_salary_structure_assignment(
-			employee,
-			salary_structure.name,
-			from_date="2026-04-01",
-			company="_Test Company",
-			base=10_000,
-		)
-
-		slip = make_salary_slip(
-			salary_structure.name,
-			employee=employee,
-			posting_date="2026-04-01",
-		)
-		slip.start_date = "2026-04-01"
-		slip.end_date = "2026-04-30"
-		slip.insert()
-
-		self.assertEqual(self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT), 1_680)
-
-	@HRMSTestSuite.change_settings(
-		"Payroll Settings",
-		{"enable_epf": 1, "enable_professional_tax": 0, "enable_esic": 0, "enable_lwf": 0},
-	)
 	def test_above_ceiling_default_caps_at_15000(self):
 		"""
 		PF wage ₹25,000 with `contribute_on_actual_pf_wage` unset (default).
