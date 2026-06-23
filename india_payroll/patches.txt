@@ -5,3 +5,4 @@
 [post_model_sync]
 # Patches added in this section will be executed after doctypes are migrated
 india_payroll.patches.v1_0.set_employment_state_from_company_address
+india_payroll.patches.v1_0.remove_include_in_pf_wage_field

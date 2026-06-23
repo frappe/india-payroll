@@ -19,9 +19,9 @@ from india_payroll.india_payroll.epf import (
 )
 from india_payroll.install import create_epf_components
 
-# A PF-eligible earning component used as Basic across all EPF tests.
-# `include_in_pf_wage` is flagged so the rule engine picks it up; formula
-# `base` keeps gross_pay equal to the SSA base for predictable assertions.
+# The earning component used as Basic across all EPF tests. Every earning
+# component now counts toward PF wage; formula `base` keeps gross_pay equal to
+# the SSA base for predictable assertions.
 _EPF_BASIC_COMPONENT = "EPF Test Basic"
 _EPF_TEST_EARNINGS = [
 	{
@@ -36,6 +36,7 @@ _EPF_TEST_EARNINGS = [
 
 _TEST_EMAILS = [
 	"test_epf_below_ceiling@indiapayroll.com",
+	"test_epf_all_earnings@indiapayroll.com",
 	"test_epf_above_ceiling_capped@indiapayroll.com",
 	"test_epf_above_ceiling_actual@indiapayroll.com",
 	"test_epf_vpf@indiapayroll.com",
@@ -61,13 +62,9 @@ class TestEPF(HRMSTestSuite):
 		self._cleanup()
 
 	def _ensure_epf_test_component(self):
-		"""
-		Create the EPF-specific basic component if absent and ensure it's
-		flagged include_in_pf_wage so the rule engine treats it as PF wage.
-		"""
+		"""Create the EPF-specific basic earning component if absent."""
 		if not frappe.db.exists("Salary Component", _EPF_BASIC_COMPONENT):
 			make_salary_component(_EPF_TEST_EARNINGS, False, ["_Test Company"])
-		frappe.db.set_value("Salary Component", _EPF_BASIC_COMPONENT, "include_in_pf_wage", 1)
 
 	def _cleanup(self):
 		for email in _TEST_EMAILS:
