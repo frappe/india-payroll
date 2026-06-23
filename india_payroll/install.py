@@ -162,6 +162,7 @@ def get_custom_fields():
 				"label": "Professional Tax",
 				"fieldtype": "Section Break",
 				"insert_after": "india_payroll_tab",
+				"collapsible": 1,
 			},
 			{
 				"fieldname": "enable_professional_tax",
@@ -174,6 +175,7 @@ def get_custom_fields():
 				"label": "Employee State Insurance",
 				"fieldtype": "Section Break",
 				"insert_after": "enable_professional_tax",
+				"collapsible": 1,
 			},
 			{
 				"fieldname": "enable_esic",
@@ -194,6 +196,7 @@ def get_custom_fields():
 				"label": "Labour Welfare Fund",
 				"fieldtype": "Section Break",
 				"insert_after": "esic_registration_number",
+				"collapsible": 1,
 			},
 			{
 				"fieldname": "enable_lwf",
@@ -206,6 +209,7 @@ def get_custom_fields():
 				"label": "Employee Provident Fund",
 				"fieldtype": "Section Break",
 				"insert_after": "enable_lwf",
+				"collapsible": 1,
 			},
 			{
 				"fieldname": "enable_epf",
@@ -402,23 +406,12 @@ def get_custom_fields():
 				"insert_after": "employee",
 			},
 		],
-		"Salary Component": [
-			{
-				"fieldname": "include_in_pf_wage",
-				"label": "Include in PF Wage",
-				"fieldtype": "Check",
-				"insert_after": "statistical_component",
-				"description": (
-					"Include this component's amount in the PF wage base "
-					"(Basic + DA + any universally and ordinarily paid allowance, "
-					"per the 2019 Supreme Court ruling)."
-				),
-			},
-		],
 	}
 
 
 def after_install():
+	from india_payroll.patches.v1_0.set_employment_state_from_company_address import execute
+
 	create_custom_fields(get_custom_fields())
 	create_professional_tax_component()
 	create_esi_components()
@@ -428,6 +421,9 @@ def after_install():
 	setup_tax_exemption_categories()
 	add_tax_regime_selector_to_workspace()
 	add_tax_regime_selector_to_sidebar()
+
+	# setup employment states
+	execute()
 
 
 def after_migrate():

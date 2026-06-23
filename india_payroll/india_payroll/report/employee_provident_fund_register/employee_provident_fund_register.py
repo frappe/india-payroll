@@ -189,8 +189,7 @@ def get_data(filters):
 		if not slips:
 			return []
 
-	pf_components = _pf_wage_components()
-	totals_by_slip = _aggregate_salary_detail([s.slip for s in slips], pf_components)
+	totals_by_slip = _aggregate_salary_detail([s.slip for s in slips])
 
 	data = []
 	for s in slips:
@@ -241,22 +240,10 @@ def get_data(filters):
 	return data
 
 
-def _pf_wage_components() -> set:
-	"""Salary Component names flagged include_in_pf_wage (2019 SC ruling — let the
-	company configure what counts toward PF wage rather than hard-coding Basic+DA)."""
-	if not frappe.db.has_column("Salary Component", "include_in_pf_wage"):
-		return set()
-	return set(
-		frappe.get_all(
-			"Salary Component",
-			filters={"include_in_pf_wage": 1},
-			pluck="name",
-		)
-	)
-
-
-def _aggregate_salary_detail(slip_names: list, pf_components: set) -> dict:
+def _aggregate_salary_detail(slip_names: list) -> dict:
 	"""One Salary Detail sweep across all slips in the report.
+
+	PF wage is the sum of every earning row — all earning components count.
 
 	Returns: { slip_name: { "pf_wage": ..., "Provident Fund": ..., "Voluntary Provident Fund": ... } }
 	"""
@@ -275,7 +262,7 @@ def _aggregate_salary_detail(slip_names: list, pf_components: set) -> dict:
 	totals: dict[str, dict] = {}
 	for r in rows:
 		bucket = totals.setdefault(r.parent, {})
-		if r.parentfield == "earnings" and r.salary_component in pf_components:
+		if r.parentfield == "earnings":
 			bucket["pf_wage"] = flt(bucket.get("pf_wage")) + flt(r.amount)
 		elif r.parentfield == "deductions" and r.salary_component in (
 			EPF_EMPLOYEE_COMPONENT,

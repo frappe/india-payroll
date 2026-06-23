@@ -19,9 +19,9 @@ from india_payroll.india_payroll.epf import (
 )
 from india_payroll.install import create_epf_components
 
-# A PF-eligible earning component used as Basic across all EPF tests.
-# `include_in_pf_wage` is flagged so the rule engine picks it up; formula
-# `base` keeps gross_pay equal to the SSA base for predictable assertions.
+# The earning component used as Basic across all EPF tests. Every earning
+# component now counts toward PF wage; formula `base` keeps gross_pay equal to
+# the SSA base for predictable assertions.
 _EPF_BASIC_COMPONENT = "EPF Test Basic"
 _EPF_TEST_EARNINGS = [
 	{
@@ -36,6 +36,7 @@ _EPF_TEST_EARNINGS = [
 
 _TEST_EMAILS = [
 	"test_epf_below_ceiling@indiapayroll.com",
+	"test_epf_all_earnings@indiapayroll.com",
 	"test_epf_above_ceiling_capped@indiapayroll.com",
 	"test_epf_above_ceiling_actual@indiapayroll.com",
 	"test_epf_vpf@indiapayroll.com",
@@ -61,13 +62,9 @@ class TestEPF(HRMSTestSuite):
 		self._cleanup()
 
 	def _ensure_epf_test_component(self):
-		"""
-		Create the EPF-specific basic component if absent and ensure it's
-		flagged include_in_pf_wage so the rule engine treats it as PF wage.
-		"""
+		"""Create the EPF-specific basic earning component if absent."""
 		if not frappe.db.exists("Salary Component", _EPF_BASIC_COMPONENT):
 			make_salary_component(_EPF_TEST_EARNINGS, False, ["_Test Company"])
-		frappe.db.set_value("Salary Component", _EPF_BASIC_COMPONENT, "include_in_pf_wage", 1)
 
 	def _cleanup(self):
 		for email in _TEST_EMAILS:
@@ -146,6 +143,63 @@ class TestEPF(HRMSTestSuite):
 		slip.insert()
 
 		self.assertEqual(self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT), 1_800)
+
+	@HRMSTestSuite.change_settings(
+		"Payroll Settings",
+		{"enable_epf": 1, "enable_professional_tax": 0, "enable_esic": 0, "enable_lwf": 0},
+	)
+	def test_all_earnings_count_toward_pf_wage(self):
+		"""
+		Every earning component counts toward PF wage — there is no
+		include_in_pf_wage flag any more. Basic ₹10,000 + Allowance ₹4,000 =
+		₹14,000 PF wage (below ceiling) → EPF 12% * 14,000 = ₹1,680.
+		"""
+		earnings = [
+			{
+				"salary_component": _EPF_BASIC_COMPONENT,
+				"abbr": "EPFTB",
+				"formula": "base",
+				"type": "Earning",
+				"amount_based_on_formula": 1,
+				"depends_on_payment_days": 0,
+			},
+			{
+				"salary_component": "EPF Test Allowance",
+				"abbr": "EPFTA",
+				"amount": 4_000,
+				"type": "Earning",
+				"depends_on_payment_days": 0,
+			},
+		]
+		employee = make_employee("test_epf_all_earnings@indiapayroll.com", company="_Test Company")
+		frappe.db.set_value("Employee", employee, "epf_applicable", 1)
+
+		salary_structure = make_salary_structure(
+			"Test EPF All Earnings Structure",
+			"Monthly",
+			company="_Test Company",
+			currency="INR",
+			earnings=earnings,
+			deductions=[],
+		)
+		create_salary_structure_assignment(
+			employee,
+			salary_structure.name,
+			from_date="2026-04-01",
+			company="_Test Company",
+			base=10_000,
+		)
+
+		slip = make_salary_slip(
+			salary_structure.name,
+			employee=employee,
+			posting_date="2026-04-01",
+		)
+		slip.start_date = "2026-04-01"
+		slip.end_date = "2026-04-30"
+		slip.insert()
+
+		self.assertEqual(self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT), 1_680)
 
 	@HRMSTestSuite.change_settings(
 		"Payroll Settings",

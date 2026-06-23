@@ -99,26 +99,13 @@ def _required_components_exist() -> bool:
 
 def _compute_pf_wage(doc) -> float:
 	"""
-	Sum earnings amounts for components flagged `include_in_pf_wage`.
-
-	The 2019 Supreme Court ruling broadened PF wages beyond Basic + DA to
-	include any allowance universally and ordinarily paid.  Which components
-	qualify is a definitional landmine, so we let companies tick the flag on
-	each Salary Component rather than hard-coding the list.
+	Sum every earning amount on the slip — all earning components count
+	toward PF wage.
 
 	Amounts on `doc.earnings` are already prorated for LOP / payment_days by
 	the Salary Slip controller, so the returned PF wage reflects NCP days.
 	"""
-	pf_components = set(
-		frappe.get_all(
-			"Salary Component",
-			filters={"include_in_pf_wage": 1},
-			pluck="name",
-		)
-	)
-	if not pf_components:
-		return 0.0
-	return sum(flt(e.amount) for e in doc.earnings if e.salary_component in pf_components)
+	return sum(flt(e.amount) for e in doc.earnings)
 
 
 def _compute_vpf(doc, epf_base: float) -> float:
