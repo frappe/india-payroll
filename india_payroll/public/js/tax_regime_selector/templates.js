@@ -60,8 +60,8 @@ export function mainLayout(hasHra) {
 	return `
 		<div style="display:flex; gap:15px; align-items:flex-start;">
 			<div style="flex:0 0 65%; max-width:65%; min-width:0;">
-				<div class="frappe-card" style="padding: 16px; max-height:calc(80vh + 1rem); display:flex; flex-direction:column;">
-					<div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-shrink:0; margin-bottom:16px;">
+				<div class="frappe-card" style="padding: 0; max-height:calc(80vh + 1rem); overflow-y:auto; overflow-x:hidden;">
+					<div style="display:flex; justify-content:space-between; align-items:start; gap:12px; padding:16px 16px 26px; position:sticky; top:0; z-index:3; background:var(--card-bg);">
 						<span style="font-size:var(--text-lg); font-weight:600;">${__(
 							"Add your exemptions to compare tax in both regimes"
 						)}</span>
@@ -69,7 +69,7 @@ export function mainLayout(hasHra) {
 							${__("Declare Tax Exemptions →")}
 						</button>
 					</div>
-					<div style="overflow-y:auto; overflow-x:hidden; flex:1; min-height:0;">
+					<div style="margin:0 16px 16px;">
 						${
 							hasHra
 								? `

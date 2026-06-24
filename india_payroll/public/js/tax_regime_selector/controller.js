@@ -179,6 +179,13 @@ export class TaxRegimeSelector {
 		$("#page-body").html(mainLayout(this.employee_data.has_hra));
 		this.bind_input_events();
 		setupDeclarationTable(this);
+
+		// The card scrolls as a whole; the heading row is sticky at the top and the table
+		// header sticks right below it. Publish the heading's height so the thead's sticky
+		// offset (--trs-header-h) parks it under the heading instead of overlapping.
+		const card = document.querySelector("#page-body .frappe-card");
+		const heading = card?.firstElementChild;
+		if (card && heading) card.style.setProperty("--trs-header-h", heading.offsetHeight + "px");
 	}
 
 	bind_input_events() {

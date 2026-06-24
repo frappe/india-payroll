@@ -75,6 +75,8 @@ export function setupDeclarationTable(ctrl) {
 		<style>
 			.declaration-input::-webkit-outer-spin-button,
 			.declaration-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+			.declaration-table thead th:first-child { border-top-left-radius: var(--border-radius); }
+			.declaration-table thead th:last-child { border-top-right-radius: var(--border-radius); }
 		</style>
 		<table style="width:100%; table-layout:fixed; border-collapse:collapse;" class="declaration-table">
 			<colgroup>
@@ -84,13 +86,13 @@ export function setupDeclarationTable(ctrl) {
 			</colgroup>
 			<thead>
 				<tr>
-					<th style="padding:10px 12px; font-weight:500; color:var(--text-muted); position:sticky; top:-1px; z-index:1; background:var(--gray-50); box-shadow:inset 0 -2px 0 var(--border-color);">${__(
+					<th style="padding:10px 12px; font-weight:500; color:var(--text-muted); position:sticky; top:calc(var(--trs-header-h, 0px) - 1px); z-index:1; background:var(--gray-50); box-shadow:inset 0 -2px 0 var(--border-color);">${__(
 						"Deduction / Investment"
 					)}</th>
-					<th style="padding:10px 12px; font-weight:500; color:var(--text-muted); text-align:right; position:sticky; top:-1px; z-index:1; background:var(--gray-50); box-shadow:inset 0 -2px 0 var(--border-color);">${__(
+					<th style="padding:10px 12px; font-weight:500; color:var(--text-muted); text-align:right; position:sticky; top:calc(var(--trs-header-h, 0px) - 1px); z-index:1; background:var(--gray-50); box-shadow:inset 0 -2px 0 var(--border-color);">${__(
 						"Limit"
 					)}</th>
-					<th style="padding:10px 12px; font-weight:500; color:var(--text-muted); text-align:right; position:sticky; top:-1px; z-index:1; background:var(--gray-50); box-shadow:inset 0 -2px 0 var(--border-color);">${__(
+					<th style="padding:10px 12px; font-weight:500; color:var(--text-muted); text-align:right; position:sticky; top:calc(var(--trs-header-h, 0px) - 1px); z-index:1; background:var(--gray-50); box-shadow:inset 0 -2px 0 var(--border-color);">${__(
 						"Declared Amount"
 					)}</th>
 				</tr>
