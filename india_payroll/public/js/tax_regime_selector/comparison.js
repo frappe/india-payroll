@@ -30,11 +30,19 @@ export function renderComparison(ctrl, result) {
 		const effective_slab = saved_slab || (ctrl.is_submitted ? new_.slab : null);
 		const is_selected = effective_slab && regime.slab === effective_slab;
 
+		// True when the suggested (winning) regime sits on a different card than the
+		// in-force one - i.e. the recommendation disagrees with the current choice.
+		const winner_slab = is_tie ? null : old_wins ? old.slab : new_.slab;
+		const selected_differs = !!effective_slab && !is_tie && effective_slab !== winner_slab;
+
 		let pill_color = "";
 		let pill_label = "";
 		if (is_selected) {
-			pill_color = "green";
 			pill_label = __("Selected");
+			// Blue (neutral) in a tie - neither regime is cheaper, so green would falsely
+			// claim "optimal" - or on an editable SSA where the recommendation differs (a
+			// distinct green "Suggested" sits alongside). Otherwise the lone choice is green.
+			pill_color = is_tie || (selected_differs && !ctrl.is_submitted) ? "blue" : "green";
 		} else if (is_tie) {
 			// Blue "Default" marks New as the tie-breaker default, only while no valid
 			// regime is saved - never override an explicit, matching choice.
@@ -43,8 +51,12 @@ export function renderComparison(ctrl, result) {
 				pill_label = __("Default");
 			}
 		} else if (is_winner) {
-			pill_color = "green";
-			pill_label = __("Suggested");
+			// On a submitted SSA the employee can't switch, so the "Suggested" pill is just
+			// noise when it disagrees with the locked-in choice - drop it.
+			if (!(ctrl.is_submitted && selected_differs)) {
+				pill_color = "green";
+				pill_label = __("Suggested");
+			}
 		}
 
 		const pill_html = pill_label
@@ -52,10 +64,11 @@ export function renderComparison(ctrl, result) {
 			: "";
 
 		// In draft the staged radio drives the border; on a submitted SSA there is no
-		// staging, so the in-force (selected) card carries the highlight instead.
+		// staging, so the in-force (selected) card carries the highlight instead. The
+		// highlight follows the pill color so the blue "Selected" card gets a blue border.
 		const is_highlighted = is_staged || (ctrl.is_submitted && is_selected);
 		const border = is_highlighted
-			? is_tie
+			? pill_color === "blue" || is_tie
 				? "var(--blue-500)"
 				: "var(--green-500)"
 			: "var(--border-color)";
@@ -112,11 +125,14 @@ export function renderComparison(ctrl, result) {
 
 	$("#comparison-alert").html("");
 
-	// Save Regime lives in the page toolbar (top-right); shown only for editable
-	// (draft) assignments once the staged choice is a real, current regime. A stale
+	// Save Regime lives in the page toolbar (top-right); behaves like Frappe's dirty
+	// indicator. Shown only for editable (draft) assignments when the staged choice is a
+	// real, current regime that differs from the one already saved - so it hides after a
+	// save (feedback) and reappears the moment a different regime is picked. A stale
 	// staged slab keeps it hidden until the user picks one. Submitted SSAs are read-only.
 	const staged_valid = ctrl.staged_slab === old.slab || ctrl.staged_slab === new_.slab;
-	if (staged_valid && !ctrl.is_submitted) {
+	const is_dirty = ctrl.staged_slab !== ctrl.selected_slab;
+	if (staged_valid && is_dirty && !ctrl.is_submitted) {
 		ctrl.page.set_primary_action(__("Save Regime"), () => ctrl.save_regime());
 	} else {
 		ctrl.page.clear_primary_action();
