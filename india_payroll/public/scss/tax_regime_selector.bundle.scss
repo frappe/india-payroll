@@ -20,12 +20,12 @@
 }
 
 /* The regime cards lay out the radio themselves, so drop frappe's forced 8px
-   right margin (input[type="radio"]{margin-right:8px!important}) and grow the
-   control to 20px with a 2px ring. --checkbox-size drives both width (set
-   !important upstream) and height; the border lives on the ::before, and the
-   input[type="radio"] prefix is needed to outweigh frappe's :before rule. */
+   right margin (input[type="radio"]{margin-right:8px!important}) and give the
+   control a 2px ring. --checkbox-size drives both width (set !important upstream)
+   and height; the border lives on the ::before, and the input[type="radio"]
+   prefix is needed to outweigh frappe's :before rule. */
 input[type="radio"].regime-radio {
-	--checkbox-size: 20px;
+	--checkbox-size: 16px;
 	margin-right: 0 !important;
 }
 input[type="radio"].regime-radio::before {
