@@ -77,9 +77,7 @@ export function renderComparison(ctrl, result) {
 			? ""
 			: `<input type="radio" name="regime-choice" class="regime-radio" value="${
 					regime.slab
-			  }" ${
-					is_staged ? "checked" : ""
-			  } style="width:16px; height:16px; margin:0; flex-shrink:0;">`;
+			  }" ${is_staged ? "checked" : ""} style="flex-shrink:0;">`;
 
 		return `
 		<label class="regime-radio-card${
@@ -139,11 +137,11 @@ export function renderComparison(ctrl, result) {
 	}
 
 	const html = `
-		<div style="display:flex; flex-wrap:wrap; gap:15px; margin-bottom:12px; margin-right:15px; align-items:stretch; flex-shrink:0;">
+		<div style="display:flex; flex-wrap:wrap; gap:15px; margin-bottom:15px; margin-right:15px; align-items:stretch; flex-shrink:0;">
 			${regime_card(__("Old Regime"), old, !is_tie && old_wins, false)}
 			${regime_card(__("New Regime"), new_, !is_tie && !old_wins, true)}
 		</div>
-		<div class="form-message ${alert_color}" style="margin-bottom:12px; font-weight:normal; margin-right:15px; flex-shrink:0; border-radius:var(--border-radius);">
+		<div class="form-message ${alert_color}" style="margin-bottom:15px; font-weight:normal; margin-right:15px; flex-shrink:0; border-radius:var(--border-radius);">
 			${winner_label}
 		</div>
 		<div style="display:flex; flex-direction:column; border:1px solid var(--border-color); border-radius:var(--border-radius); overflow:hidden; font-size:var(--text-sm); margin-right:15px; flex:1; min-height:0;">

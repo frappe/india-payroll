@@ -12,7 +12,7 @@ export function pageShell() {
 				<div style="flex:0 0 65%; max-width:65%; display:flex; gap:16px; min-width:0;">
 					<div style="flex:1; min-width:0;"><div id="payroll-period-wrapper"></div></div>
 					<div style="flex:1; min-width:0;"><div id="employee-field-wrapper"></div></div>
-					<div style="flex:1; min-width:0; overflow:hidden;"><div id="annual-gross-wrapper"></div></div>
+					<div style="flex:1; min-width:0;	"><div id="annual-gross-wrapper"></div></div>
 				</div>
 				<div style="flex:1; min-width:0;" id="comparison-alert"></div>
 			</div>
@@ -84,7 +84,7 @@ export function mainLayout(hasHra) {
 								"Chapter VI-A Deductions"
 							)}</h6>
 							<div style="display:flex; align-items:center; gap:8px;">
-								<div style="position:relative;" id="declaration-search-wrapper">
+								<div style="position:relative; width:200px;" id="declaration-search-wrapper">
 									<span style="position:absolute; left:8px; top:50%; transform:translateY(-50%); display:inline-flex; color:var(--gray-500); --icon-stroke:var(--gray-500); pointer-events:none; z-index:2;">
 										${frappe.utils.icon("search", "sm")}
 									</span>
