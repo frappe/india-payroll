@@ -12,7 +12,7 @@ export function pageShell() {
 				<div style="flex:0 0 65%; max-width:65%; display:flex; gap:16px; min-width:0;">
 					<div style="flex:1; min-width:0;"><div id="payroll-period-wrapper"></div></div>
 					<div style="flex:1; min-width:0;"><div id="employee-field-wrapper"></div></div>
-					<div style="flex:1; min-width:0;	"><div id="annual-gross-wrapper"></div></div>
+					<div style="flex:1; min-width:0;"><div id="annual-gross-wrapper"></div></div>
 				</div>
 				<div style="flex:1; min-width:0;" id="comparison-alert"></div>
 			</div>
