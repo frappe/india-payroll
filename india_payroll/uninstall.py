@@ -3,21 +3,19 @@ import frappe
 
 from india_payroll.install import get_custom_fields
 
-WORKSPACE_NAME = "Tax & Benefits"
-PAGE_ROUTE = "tax-regime-selector"
-
 
 def before_uninstall():
-	"""Reverse the customizations india_payroll.install.after_install() added:
-	the Tax Regime Selector workspace/sidebar entries and the custom fields.
+	"""Reverse the customizations india_payroll.install.after_install() added.
+
+	The India Payroll Workspace, Workspace Sidebar and Desktop Icon are module-owned
+	standard records and are removed by the framework on app/module uninstall, so only
+	the custom fields need explicit cleanup here.
 
 	The seeded data records (Salary Components, Income Tax Slabs / tax regimes,
 	Employee Tax Exemption Categories) are left in place - they are generic
 	HR/payroll convenience records, not india_payroll-specific, and may be in
 	use. Mirrors india_compliance, which only removes customizations on uninstall."""
 	try:
-		delete_workspace_link()
-		delete_sidebar_item()
 		delete_custom_fields()
 	except Exception:
 		click.secho(
@@ -26,53 +24,6 @@ def before_uninstall():
 			fg="bright_red",
 		)
 		raise
-
-
-def delete_workspace_link():
-	"""Reverse add_tax_regime_selector_to_workspace(). Idempotent."""
-	if not frappe.db.exists("Workspace", WORKSPACE_NAME):
-		return
-
-	workspace = frappe.get_doc("Workspace", WORKSPACE_NAME)
-	link = next(
-		(l for l in workspace.links if l.link_type == "Page" and l.link_to == PAGE_ROUTE),
-		None,
-	)
-	if not link:
-		return
-
-	workspace.links.remove(link)
-
-	# Decrement the 'Tax Setup' card's child count since we removed one of its links.
-	for row in workspace.links:
-		if row.type == "Card Break" and row.label == "Tax Setup":
-			row.link_count = max((row.link_count or 0) - 1, 0)
-			break
-
-	for i, row in enumerate(workspace.links):
-		row.idx = i + 1
-
-	workspace.save(ignore_permissions=True)
-
-
-def delete_sidebar_item():
-	"""Reverse add_tax_regime_selector_to_sidebar(). Idempotent."""
-	if not frappe.db.exists("Workspace Sidebar", WORKSPACE_NAME):
-		return
-
-	sidebar = frappe.get_doc("Workspace Sidebar", WORKSPACE_NAME)
-	item = next(
-		(i for i in sidebar.items if i.link_type == "Page" and i.link_to == PAGE_ROUTE),
-		None,
-	)
-	if not item:
-		return
-
-	sidebar.items.remove(item)
-	for i, row in enumerate(sidebar.items):
-		row.idx = i + 1
-
-	sidebar.save(ignore_permissions=True)
 
 
 def delete_custom_fields():

@@ -1,0 +1,97 @@
+{
+ "app": "india_payroll",
+ "charts": [],
+ "content": "[{\"id\":\"ip_header_1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>India Payroll</b></span>\",\"col\":12}},{\"id\":\"ip_card_tools\",\"type\":\"card\",\"data\":{\"card_name\":\"Tools\",\"col\":4}},{\"id\":\"ip_card_reports\",\"type\":\"card\",\"data\":{\"card_name\":\"Reports\",\"col\":4}}]",
+ "creation": "2026-06-25 00:00:00.000000",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "badge-indian-rupee",
+ "idx": 1,
+ "is_hidden": 0,
+ "label": "India Payroll",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Tools",
+   "link_count": 1,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Tax Regime Selector",
+   "link_count": 0,
+   "link_to": "tax-regime-selector",
+   "link_type": "Page",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Reports",
+   "link_count": 4,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Bank Mandate Report",
+   "link_count": 0,
+   "link_to": "Bank Mandate Report",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Employee Provident Fund Register",
+   "link_count": 0,
+   "link_to": "Employee Provident Fund Register",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "ESIC Register",
+   "link_count": 0,
+   "link_to": "ESIC Register",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "LWF Register",
+   "link_count": 0,
+   "link_to": "LWF Register",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-06-25 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "India Payroll",
+ "name": "India Payroll",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 11.0,
+ "shortcuts": [],
+ "title": "India Payroll",
+ "type": "Workspace"
+}
