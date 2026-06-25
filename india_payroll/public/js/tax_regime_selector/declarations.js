@@ -123,12 +123,6 @@ export function setupDeclarationTable(ctrl) {
 	const search = document.getElementById("declaration-search");
 	if (search) {
 		search.addEventListener("input", (e) => filterDeclarations(e.target.value));
-		// Match the search box width to the Declared Amount input column.
-		const sample_input = wrapper.querySelector(".declaration-input");
-		const search_wrapper = document.getElementById("declaration-search-wrapper");
-		if (sample_input && search_wrapper) {
-			search_wrapper.style.width = sample_input.offsetWidth + "px";
-		}
 	}
 
 	const section_states = new Map();
