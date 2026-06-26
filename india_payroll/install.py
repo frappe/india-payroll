@@ -441,8 +441,6 @@ def after_install():
 	create_epf_components()
 	create_income_tax_slabs()
 	setup_tax_exemption_categories()
-	add_tax_regime_selector_to_workspace()
-	add_tax_regime_selector_to_sidebar()
 
 	# setup employment states
 	execute()
@@ -450,96 +448,6 @@ def after_install():
 
 def after_migrate():
 	create_custom_fields(get_custom_fields())
-	add_tax_regime_selector_to_workspace()
-	add_tax_regime_selector_to_sidebar()
-
-
-def add_tax_regime_selector_to_workspace():
-	"""Add the Tax Regime Selector page link to HRMS's 'Tax & Benefits' workspace
-	under the 'Tax Setup' card. Idempotent."""
-	workspace_name = "Tax & Benefits"
-	page_route = "tax-regime-selector"
-
-	if not frappe.db.exists("Workspace", workspace_name):
-		return
-
-	workspace = frappe.get_doc("Workspace", workspace_name)
-	if any(link.link_type == "Page" and link.link_to == page_route for link in workspace.links):
-		return
-
-	new_link = workspace.append(
-		"links",
-		{
-			"type": "Link",
-			"label": "Tax Regime Selector",
-			"link_to": page_route,
-			"link_type": "Page",
-			"onboard": 0,
-			"is_query_report": 0,
-			"hidden": 0,
-		},
-	)
-
-	# Place the new link as the last child of the 'Tax Setup' card (and bump its
-	# link_count). `append` adds at the end, so move the row into position.
-	insert_at = None
-	for idx, link in enumerate(workspace.links):
-		if link.type == "Card Break" and link.label == "Tax Setup":
-			link.link_count = (link.link_count or 0) + 1
-			insert_at = idx + link.link_count  # after the card's existing children
-			break
-
-	if insert_at is not None:
-		workspace.links.remove(new_link)
-		workspace.links.insert(insert_at, new_link)
-		for i, link in enumerate(workspace.links):
-			link.idx = i + 1
-
-	workspace.save(ignore_permissions=True)
-
-
-def add_tax_regime_selector_to_sidebar():
-	"""Add the Tax Regime Selector page link to HRMS's 'Tax & Benefits' workspace
-	sidebar, right below the 'Home' entry. Idempotent."""
-	sidebar_name = "Tax & Benefits"
-	page_route = "tax-regime-selector"
-
-	if not frappe.db.exists("Workspace Sidebar", sidebar_name):
-		return
-
-	sidebar = frappe.get_doc("Workspace Sidebar", sidebar_name)
-	if any(item.link_type == "Page" and item.link_to == page_route for item in sidebar.items):
-		return
-
-	new_item = sidebar.append(
-		"items",
-		{
-			"type": "Link",
-			"label": "Tax Regime Selector",
-			"link_to": page_route,
-			"link_type": "Page",
-			"icon": "chart-network",
-			"child": 0,
-			"collapsible": 1,
-			"indent": 0,
-			"keep_closed": 0,
-			"show_arrow": 0,
-		},
-	)
-
-	# Place it right after the 'Home' entry (the workspace self-link). `append`
-	# adds at the end, so move the row into position.
-	insert_at = next(
-		(i + 1 for i, item in enumerate(sidebar.items) if item.link_type == "Workspace"),
-		None,
-	)
-	if insert_at is not None:
-		sidebar.items.remove(new_item)
-		sidebar.items.insert(insert_at, new_item)
-		for i, item in enumerate(sidebar.items):
-			item.idx = i + 1
-
-	sidebar.save(ignore_permissions=True)
 
 
 def create_professional_tax_component():

@@ -1,0 +1,21 @@
+{
+ "app": "india_payroll",
+ "creation": "2026-06-25 00:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Desktop Icon",
+ "hidden": 0,
+ "icon": "badge-indian-rupee",
+ "icon_type": "Link",
+ "idx": 99,
+ "label": "India Payroll",
+ "link_to": "India Payroll",
+ "link_type": "Workspace Sidebar",
+ "modified": "2026-06-25 18:00:00.000000",
+ "modified_by": "Administrator",
+ "name": "India Payroll",
+ "owner": "Administrator",
+ "parent_icon": "Frappe HR",
+ "restrict_removal": 0,
+ "roles": [],
+ "standard": 1
+}
