@@ -1,0 +1,370 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "format:{tan}-{form_type}-{quarter}-{financial_year}",
+ "creation": "2026-06-26 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "company",
+  "tan",
+  "pan",
+  "column_break_head",
+  "financial_year",
+  "quarter",
+  "form_type",
+  "filing_config_section",
+  "return_type",
+  "previous_receipt_number",
+  "column_break_cfg",
+  "filing_status",
+  "deductor_section",
+  "deductor_name",
+  "responsible_person_name",
+  "responsible_person_pan",
+  "column_break_ded",
+  "responsible_person_designation",
+  "deductees_section",
+  "deductees",
+  "totals_section",
+  "total_amount_paid",
+  "total_tax_deducted",
+  "column_break_tot",
+  "total_tax_deposited",
+  "validation_section",
+  "validation_issues",
+  "files_section",
+  "txt_file",
+  "csi_file",
+  "sheet_json_file",
+  "column_break_files",
+  "fvu_file",
+  "form_27a",
+  "ack_section",
+  "token_number",
+  "acknowledgement_number",
+  "column_break_ack",
+  "filing_date",
+  "actions_section",
+  "filing_actions",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "fetch_from": "company.tan",
+   "fetch_if_empty": 1,
+   "fieldname": "tan",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "TAN",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "company.tax_id",
+   "fetch_if_empty": 1,
+   "fieldname": "pan",
+   "fieldtype": "Data",
+   "label": "Deductor PAN",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "financial_year",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Financial Year",
+   "options": "Fiscal Year",
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "fieldname": "quarter",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Quarter",
+   "options": "Q1\nQ2\nQ3\nQ4",
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "default": "24Q",
+   "fieldname": "form_type",
+   "fieldtype": "Select",
+   "label": "Form Type",
+   "options": "24Q",
+   "read_only": 1
+  },
+  {
+   "fieldname": "filing_config_section",
+   "fieldtype": "Section Break",
+   "label": "Filing"
+  },
+  {
+   "default": "Original",
+   "fieldname": "return_type",
+   "fieldtype": "Select",
+   "label": "Return Type",
+   "options": "Original\nRevised"
+  },
+  {
+   "depends_on": "eval:doc.return_type=='Revised'",
+   "fieldname": "previous_receipt_number",
+   "fieldtype": "Data",
+   "label": "Previous Receipt Number",
+   "mandatory_depends_on": "eval:doc.return_type=='Revised'",
+   "description": "15-digit provisional receipt number of the original/last accepted return."
+  },
+  {
+   "fieldname": "column_break_cfg",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Draft",
+   "fieldname": "filing_status",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Filing Status",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "deductor_section",
+   "fieldtype": "Section Break",
+   "label": "Deductor & Responsible Person"
+  },
+  {
+   "fetch_from": "company.company_name",
+   "fetch_if_empty": 1,
+   "fieldname": "deductor_name",
+   "fieldtype": "Data",
+   "label": "Deductor Name",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "company.responsible_person_name",
+   "fetch_if_empty": 1,
+   "fieldname": "responsible_person_name",
+   "fieldtype": "Data",
+   "label": "Responsible Person Name"
+  },
+  {
+   "fetch_from": "company.responsible_person_pan",
+   "fetch_if_empty": 1,
+   "fieldname": "responsible_person_pan",
+   "fieldtype": "Data",
+   "label": "Responsible Person PAN"
+  },
+  {
+   "fieldname": "column_break_ded",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fetch_from": "company.responsible_person_designation",
+   "fetch_if_empty": 1,
+   "fieldname": "responsible_person_designation",
+   "fieldtype": "Data",
+   "label": "Responsible Person Designation"
+  },
+  {
+   "fieldname": "deductees_section",
+   "fieldtype": "Section Break",
+   "label": "Deductee-wise Deductions"
+  },
+  {
+   "fieldname": "deductees",
+   "fieldtype": "Table",
+   "label": "Deductees",
+   "options": "TDS Return Deductee"
+  },
+  {
+   "fieldname": "totals_section",
+   "fieldtype": "Section Break",
+   "label": "Totals"
+  },
+  {
+   "fieldname": "total_amount_paid",
+   "fieldtype": "Currency",
+   "label": "Total Amount Paid",
+   "read_only": 1,
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "total_tax_deducted",
+   "fieldtype": "Currency",
+   "label": "Total Tax Deducted",
+   "read_only": 1,
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "column_break_tot",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "total_tax_deposited",
+   "fieldtype": "Currency",
+   "label": "Total Tax Deposited (Challans)",
+   "read_only": 1,
+   "options": "Company:company:default_currency"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "validation_section",
+   "fieldtype": "Section Break",
+   "label": "Validation"
+  },
+  {
+   "fieldname": "validation_issues",
+   "fieldtype": "Code",
+   "label": "Validation Issues",
+   "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "files_section",
+   "fieldtype": "Section Break",
+   "label": "Generated Files"
+  },
+  {
+   "fieldname": "txt_file",
+   "fieldtype": "Attach",
+   "label": "Form 24Q TXT",
+   "read_only": 1
+  },
+  {
+   "fieldname": "csi_file",
+   "fieldtype": "Attach",
+   "label": "CSI File",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sheet_json_file",
+   "fieldtype": "Attach",
+   "label": "Sheet JSON (audit)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_files",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "fvu_file",
+   "fieldtype": "Attach",
+   "label": "FVU File",
+   "read_only": 1
+  },
+  {
+   "fieldname": "form_27a",
+   "fieldtype": "Attach",
+   "label": "Form 27A",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ack_section",
+   "fieldtype": "Section Break",
+   "label": "Acknowledgement"
+  },
+  {
+   "fieldname": "token_number",
+   "fieldtype": "Data",
+   "label": "Token Number",
+   "read_only": 1
+  },
+  {
+   "fieldname": "acknowledgement_number",
+   "fieldtype": "Data",
+   "label": "Provisional Receipt Number",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_ack",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "filing_date",
+   "fieldtype": "Datetime",
+   "label": "Filing Date",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "actions_section",
+   "fieldtype": "Section Break",
+   "label": "Filing Log"
+  },
+  {
+   "fieldname": "filing_actions",
+   "fieldtype": "Table",
+   "label": "Filing Actions",
+   "options": "TDS Return Action",
+   "read_only": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "TDS Return",
+   "print_hide": 1,
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-06-26 00:00:00.000000",
+ "module": "India Payroll",
+ "name": "TDS Return",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "cancel": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Payroll Manager",
+   "share": 1,
+   "submit": 1,
+   "cancel": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
