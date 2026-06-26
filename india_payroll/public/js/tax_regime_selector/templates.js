@@ -95,7 +95,7 @@ export function mainLayout(hasHra) {
 								<button class="btn btn-xs btn-default" id="collapse-all-btn">${__("Collapse All")}</button>
 							</div>
 						</div>
-						<div id="declaration-table-wrapper"></div>
+						<div id="declaration-table-wrapper" style="border-radius:8px 8px 0 0; overflow:clip;"></div>
 						<div id="declaration-empty" class="text-muted text-center" style="display:none; padding:20px;">
 							${__("No deductions found")}
 						</div>

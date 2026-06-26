@@ -4,5 +4,7 @@
 frappe.pages["tax-regime-selector"].on_page_load = function (wrapper) {
 	frappe.require(["tax_regime_selector.bundle.js", "tax_regime_selector.bundle.css"], () => {
 		new window.india_payroll.ui.TaxRegimeSelector(wrapper);
+		frappe.breadcrumbs.add("India Payroll");
+		frappe.breadcrumbs.append_breadcrumb_element("", __("Tax Regime Selector"));
 	});
 };

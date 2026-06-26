@@ -15,7 +15,7 @@ export function renderComparison(ctrl, result) {
 
 	// A regime choice rendered as a radio card. Picking it stages the choice; the
 	// staged card gets a colored border (green, or blue on a tie). Label precedence
-	// is Selected > Suggested/Default. The regime in force is the saved choice (when
+	// is Saved > Suggested/Default. The regime in force is the saved choice (when
 	// it still matches a current card), or - on a submitted/locked SSA with nothing
 	// valid saved - New Regime as the system default.
 	const regime_card = (label, regime, is_winner, tie_pill) => {
@@ -38,7 +38,7 @@ export function renderComparison(ctrl, result) {
 		let pill_color = "";
 		let pill_label = "";
 		if (is_selected) {
-			pill_label = __("Selected");
+			pill_label = __("Saved");
 			// Blue (neutral) in a tie - neither regime is cheaper, so green would falsely
 			// claim "optimal" - or on an editable SSA where the recommendation differs (a
 			// distinct green "Suggested" sits alongside). Otherwise the lone choice is green.
@@ -65,7 +65,7 @@ export function renderComparison(ctrl, result) {
 
 		// In draft the staged radio drives the border; on a submitted SSA there is no
 		// staging, so the in-force (selected) card carries the highlight instead. The
-		// highlight follows the pill color so the blue "Selected" card gets a blue border.
+		// highlight follows the pill color so the blue "Saved" card gets a blue border.
 		const is_highlighted = is_staged || (ctrl.is_submitted && is_selected);
 		const border = is_highlighted
 			? pill_color === "blue" || is_tie
@@ -141,10 +141,10 @@ export function renderComparison(ctrl, result) {
 			${regime_card(__("Old Regime"), old, !is_tie && old_wins, false)}
 			${regime_card(__("New Regime"), new_, !is_tie && !old_wins, true)}
 		</div>
-		<div class="form-message ${alert_color}" style="margin-bottom:15px; font-weight:normal; margin-right:15px; flex-shrink:0; border-radius:var(--border-radius);">
+		<div class="form-message ${alert_color}" style="margin-bottom:15px; font-weight:normal; margin-right:15px; flex-shrink:0; border-radius:8px;">
 			${winner_label}
 		</div>
-		<div style="display:flex; flex-direction:column; border:1px solid var(--border-color); border-radius:var(--border-radius); overflow:hidden; font-size:var(--text-sm); margin-right:15px; flex:1; min-height:0;">
+		<div style="display:flex; flex-direction:column; border:1px solid var(--border-color); border-radius:8px; overflow:hidden; font-size:var(--text-sm); margin-right:15px; flex:1; min-height:0;">
 			<table style="width:100%; border-collapse:collapse; table-layout:fixed; flex-shrink:0;">
 				${colgroup}
 				<thead>${thead}</thead>

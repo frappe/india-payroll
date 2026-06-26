@@ -51,7 +51,8 @@ export class TaxRegimeSelector {
 				reqd: 1,
 				change: () => {
 					const employee = this.employee_control.get_value();
-					if (employee) {
+					if (employee && employee !== this._current_employee) {
+						this._current_employee = employee;
 						this.load_employee(employee);
 					} else {
 						this.annual_gross_control.set_value("");
