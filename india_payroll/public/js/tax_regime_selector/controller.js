@@ -49,10 +49,11 @@ export class TaxRegimeSelector {
 				label: __("Employee"),
 				placeholder: __("Select Employee"),
 				reqd: 1,
-				change: () => {
+				onchange: () => {
 					const employee = this.employee_control.get_value();
-					if (employee && employee !== this._current_employee) {
-						this._current_employee = employee;
+					if (employee === this._current_employee) return;
+					this._current_employee = employee;
+					if (employee) {
 						this.load_employee(employee);
 					} else {
 						this.annual_gross_control.set_value("");
@@ -71,7 +72,7 @@ export class TaxRegimeSelector {
 				fieldname: "annual_gross_earning",
 				label: __("Annual Gross Earning"),
 				reqd: 1,
-				change: () => {
+				onchange: () => {
 					const val = flt(this.annual_gross_control.get_value());
 					if (val > 0) {
 						this.annual_gross = val;
