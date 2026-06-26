@@ -75,8 +75,6 @@ export function setupDeclarationTable(ctrl) {
 		<style>
 			.declaration-input::-webkit-outer-spin-button,
 			.declaration-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-			.declaration-table thead th:first-child { border-top-left-radius: var(--border-radius); }
-			.declaration-table thead th:last-child { border-top-right-radius: var(--border-radius); }
 		</style>
 		<table style="width:100%; table-layout:fixed; border-collapse:collapse;" class="declaration-table">
 			<colgroup>
