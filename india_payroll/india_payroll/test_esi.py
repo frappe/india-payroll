@@ -38,6 +38,21 @@ _ESI_TEST_EARNINGS = [
 	}
 ]
 
+# A prorating earning (depends_on_payment_days=1) for LOP scenarios: its slip
+# `amount` is reduced by payment days while `default_amount` stays at the full
+# monthly value — exactly the case the ESI coverage test must handle.
+_ESI_LOP_COMPONENT = "ESI LOP Basic"
+_ESI_LOP_EARNINGS = [
+	{
+		"salary_component": _ESI_LOP_COMPONENT,
+		"abbr": "ESILOP",
+		"formula": "base",
+		"type": "Earning",
+		"amount_based_on_formula": 1,
+		"depends_on_payment_days": 1,
+	}
+]
+
 
 class TestESI(HRMSTestSuite):
 	def setUp(self):
@@ -49,6 +64,8 @@ class TestESI(HRMSTestSuite):
 			"test_esi_disability_above@indiapayroll.com",
 			"test_esi_disabled_setting@indiapayroll.com",
 			"test_esi_net_pay@indiapayroll.com",
+			"test_esi_lop_eligibility@indiapayroll.com",
+			"test_esi_lop_contribution@indiapayroll.com",
 		]
 		create_esi_components()
 		self._ensure_esi_test_components()
@@ -56,11 +73,13 @@ class TestESI(HRMSTestSuite):
 
 	def _ensure_esi_test_components(self):
 		"""
-		Ensure the ESI-specific salary component and its ledger account exist.
-		Runs only when the component is absent so it is fast on subsequent runs.
+		Ensure the ESI-specific salary components exist.
+		Runs only when a component is absent so it is fast on subsequent runs.
 		"""
 		if not frappe.db.exists("Salary Component", _ESI_BASIC_COMPONENT):
 			make_salary_component(_ESI_TEST_EARNINGS, False, ["_Test Company"])
+		if not frappe.db.exists("Salary Component", _ESI_LOP_COMPONENT):
+			make_salary_component(_ESI_LOP_EARNINGS, False, ["_Test Company"])
 
 	def _cleanup(self):
 		"""
@@ -128,6 +147,14 @@ class TestESI(HRMSTestSuite):
 		salary_slip.end_date = end_date
 
 		return employee, salary_slip
+
+	def _set_ssa(self, employee: str, values: dict) -> str:
+		"""Set India Payroll statutory config on the employee's salary structure assignment."""
+		ssa = frappe.db.get_value(
+			"Salary Structure Assignment", {"employee": employee}, "name", order_by="from_date desc"
+		)
+		frappe.db.set_value("Salary Structure Assignment", ssa, values)
+		return ssa
 
 	@HRMSTestSuite.change_settings("Payroll Settings", {"enable_esic": 1})
 	def test_eligible_employee_esi_applied(self):
@@ -200,7 +227,7 @@ class TestESI(HRMSTestSuite):
 			"Test ESI Disability Ceiling Structure",
 			gross,
 		)
-		frappe.db.set_value("Employee", employee, "is_person_with_disability", 1)
+		self._set_ssa(employee, {"is_person_with_disability": 1})
 
 		salary_slip.insert()
 
@@ -226,7 +253,7 @@ class TestESI(HRMSTestSuite):
 			"Test ESI Disability Above Ceiling Structure",
 			gross,
 		)
-		frappe.db.set_value("Employee", employee, "is_person_with_disability", 1)
+		self._set_ssa(employee, {"is_person_with_disability": 1})
 
 		salary_slip.insert()
 
@@ -275,3 +302,83 @@ class TestESI(HRMSTestSuite):
 			flt(d.amount) for d in salary_slip.deductions if d.salary_component == ESI_EMPLOYEE_COMPONENT
 		)
 		self.assertAlmostEqual(emp_esi_in_deduction, expected_esi, places=2)
+
+	def _make_lop_salary_slip(self, email: str, structure_name: str, base: float):
+		"""Build (uninserted) a salary slip whose single earning prorates with payment
+		days, so LOP can be simulated by overriding payment_days/total_working_days."""
+		employee = make_employee(email, company="_Test Company", gender="Male")
+		salary_structure = make_salary_structure(
+			structure_name,
+			"Monthly",
+			company="_Test Company",
+			currency="INR",
+			earnings=_ESI_LOP_EARNINGS,
+			deductions=[],
+		)
+		create_salary_structure_assignment(
+			employee,
+			salary_structure.name,
+			from_date="2026-04-01",
+			company="_Test Company",
+			base=base,
+		)
+		salary_slip = make_salary_slip(salary_structure.name, employee=employee, posting_date="2026-04-01")
+		salary_slip.start_date = "2026-04-01"
+		salary_slip.end_date = "2026-04-30"
+		return salary_slip
+
+	@staticmethod
+	def _esi_rows(slip):
+		return [d for d in slip.deductions if d.salary_component == ESI_EMPLOYEE_COMPONENT]
+
+	@HRMSTestSuite.change_settings("Payroll Settings", {"enable_esic": 1})
+	def test_eligibility_uses_full_gross_not_prorated(self):
+		"""
+		Coverage is judged on the full monthly gross, not the LOP-prorated slip
+		gross. A ₹22,000 earner stays out of ESI even in a month where LOP drops
+		the paid gross below the ₹21,000 ceiling.
+		"""
+		slip = self._make_lop_salary_slip(
+			"test_esi_lop_eligibility@indiapayroll.com", "Test ESI LOP Eligibility Structure", 22_000
+		)
+		slip.insert()
+
+		# Full month: gross 22,000 > 21,000 → not covered.
+		self.assertEqual(len(self._esi_rows(slip)), 0)
+
+		# Simulate LOP: half the period unpaid → prorated gross 11,000 (< ceiling),
+		# but the full wage is still 22,000, so the employee remains out of ESI.
+		slip.total_working_days = 30
+		slip.payment_days = 15
+		slip.calculate_net_pay()
+
+		self.assertAlmostEqual(slip.gross_pay, 11_000, places=2)
+		self.assertEqual(
+			len(self._esi_rows(slip)),
+			0,
+			"A high earner must stay out of ESI even when LOP drops the paid gross below the ceiling",
+		)
+
+	@HRMSTestSuite.change_settings("Payroll Settings", {"enable_esic": 1})
+	def test_contribution_levied_on_actual_paid_wages_under_lop(self):
+		"""
+		For a covered employee, the contribution is levied on the actual wages paid
+		(the prorated gross), not the full gross: ₹20,000 earner with half-month LOP
+		→ ESI on ₹10,000 = ₹400.
+		"""
+		slip = self._make_lop_salary_slip(
+			"test_esi_lop_contribution@indiapayroll.com", "Test ESI LOP Contribution Structure", 20_000
+		)
+		slip.insert()
+
+		# Full month: ESI on 20,000 = 800.
+		self.assertAlmostEqual(self._esi_rows(slip)[0].amount, flt(20_000 * ESI_RATE, 2), places=2)
+
+		# Half-month LOP: still covered (full gross 20,000 ≤ ceiling), contribution on
+		# the 10,000 actually paid → 400.
+		slip.total_working_days = 30
+		slip.payment_days = 15
+		slip.calculate_net_pay()
+
+		self.assertAlmostEqual(slip.gross_pay, 10_000, places=2)
+		self.assertAlmostEqual(self._esi_rows(slip)[0].amount, flt(10_000 * ESI_RATE, 2), places=2)

@@ -7,6 +7,7 @@ from frappe.query_builder import DocType
 from frappe.utils import flt, getdate
 
 from india_payroll.india_payroll.lwf import LWF_STATE_CONFIG, _is_deduction_month
+from india_payroll.india_payroll.utils import get_effective_ssa_values
 
 _MONTHS = {
 	"January": 1,
@@ -134,32 +135,27 @@ def get_data(filters):
 		query = query.where(SS.start_date >= date_range["from_date"])
 		query = query.where(SS.start_date <= date_range["to_date"])
 
-	# Pull lwf_exempted custom field if it exists
-	if frappe.db.has_column("Employee", "lwf_exempted"):
-		query = query.select(Emp.lwf_exempted)
-
 	rows = query.run(as_dict=True)
 
 	data = []
 	for row in rows:
-		# Resolve employment_state from SSA
-		work_state = frappe.db.get_value(
-			"Salary Structure Assignment",
-			filters={
-				"employee": row.employee,
-				"company": row.company,
-				"salary_structure": row.salary_structure,
-				"from_date": ("<=", row.start_date),
-			},
-			fieldname="employment_state",
+		# Employment state and the LWF exemption flag both live on the Salary
+		# Structure Assignment effective for the slip's period.
+		ssa = get_effective_ssa_values(
+			row.employee,
+			row.company,
+			row.salary_structure,
+			row.start_date,
+			["employment_state", "lwf_exempted"],
 		)
+		work_state = ssa.get("employment_state")
 
 		if state_filter and work_state != state_filter:
 			continue
 
 		# Determine deduction status
 		payroll_month = getdate(row.start_date).month
-		lwf_exempted = bool(row.get("lwf_exempted"))
+		lwf_exempted = bool(ssa.get("lwf_exempted"))
 
 		if not work_state or work_state not in LWF_STATE_CONFIG:
 			deduction_status = "No LWF State"

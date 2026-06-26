@@ -6,3 +6,5 @@
 # Patches added in this section will be executed after doctypes are migrated
 india_payroll.patches.v1_0.set_employment_state_from_company_address
 india_payroll.patches.v1_0.remove_include_in_pf_wage_field
+india_payroll.patches.v1_0.move_statutory_config_to_salary_structure_assignment
+india_payroll.patches.v1_0.consolidate_employee_india_payroll_section #2

@@ -8,6 +8,8 @@ from frappe import _
 from frappe.query_builder import DocType
 from frappe.utils import flt
 
+from india_payroll.india_payroll.utils import get_effective_ssa_values
+
 # Statutory rates (ESI Act, 1948 — effective July 2019)
 EMPLOYEE_ESI_RATE = 0.0075  # 0.75 %
 EMPLOYER_ESI_RATE = 0.0325  # 3.25 %
@@ -123,6 +125,9 @@ def get_data(filters):
 		.on(Emp.name == SS.employee)
 		.select(
 			SS.employee,
+			SS.company,
+			SS.salary_structure,
+			SS.start_date,
 			SS.gross_pay,
 			SS.currency,
 			Emp.department,
@@ -138,12 +143,9 @@ def get_data(filters):
 		query = query.where(SS.start_date >= date_range["from_date"])
 		query = query.where(SS.start_date <= date_range["to_date"])
 
-	# Pull optional custom fields only when the column actually exists
+	# ESIC IP number stays on the Employee master; pull it only when present.
 	if frappe.db.has_column("Employee", "esic_card_no"):
 		query = query.select(Emp.esic_card_no)
-
-	if frappe.db.has_column("Employee", "is_person_with_disability"):
-		query = query.select(Emp.is_person_with_disability)
 
 	rows = query.run(as_dict=True)
 
@@ -152,7 +154,11 @@ def get_data(filters):
 	data = []
 	for row in rows:
 		gross = flt(row.gross_pay)
-		is_pwd = bool(row.get("is_person_with_disability"))
+		# The PwD flag lives on the Salary Structure Assignment effective for the slip.
+		ssa = get_effective_ssa_values(
+			row.employee, row.company, row.salary_structure, row.start_date, ["is_person_with_disability"]
+		)
+		is_pwd = bool(ssa.get("is_person_with_disability"))
 		ceiling = ESI_WAGE_CEILING_DISABILITY if is_pwd else ESI_WAGE_CEILING
 
 		if gross > ceiling:

@@ -229,15 +229,46 @@ def get_custom_fields():
 		],
 		"Employee": [
 			{
-				"fieldname": "india_payroll_bank_cb",
+				"fieldname": "india_payroll_section",
+				"label": "India Payroll",
+				"fieldtype": "Section Break",
+				"insert_after": "salary_mode",
+				"collapsible": 1,
+			},
+			{
+				"fieldname": "uan_number",
+				"label": "UAN",
+				"fieldtype": "Data",
+				"insert_after": "india_payroll_section",
+				"translatable": 0,
+				"description": "12-digit Universal Account Number issued by EPFO.",
+			},
+			{
+				"fieldname": "pf_name",
+				"label": "Name as per UAN",
+				"fieldtype": "Data",
+				"insert_after": "uan_number",
+				"translatable": 0,
+				"description": "Employee name as registered with EPFO. May differ from HR name; used in the ECR file.",
+			},
+			{
+				"fieldname": "india_payroll_cb",
 				"fieldtype": "Column Break",
-				"insert_after": "bank_ac_no",
+				"insert_after": "pf_name",
+			},
+			{
+				"fieldname": "esic_card_no",
+				"label": "ESIC IP Number",
+				"fieldtype": "Data",
+				"insert_after": "india_payroll_cb",
+				"translatable": 0,
+				"description": "Employee's ESIC Insurance Number (IP Number) issued by ESIC",
 			},
 			{
 				"fieldname": "ifsc_code",
 				"label": "IFSC Code",
 				"fieldtype": "Data",
-				"insert_after": "india_payroll_bank_cb",
+				"insert_after": "india_payroll_cb",
 				"print_hide": 1,
 				"depends_on": 'eval:doc.salary_mode == "Bank"',
 				"translatable": 0,
@@ -269,123 +300,6 @@ def get_custom_fields():
 				"depends_on": 'eval:doc.salary_mode == "Bank"',
 				"translatable": 0,
 			},
-			{
-				"fieldname": "india_payroll_esi_section",
-				"label": "Employee State Insurance",
-				"fieldtype": "Section Break",
-				"insert_after": "account_type",
-			},
-			{
-				"fieldname": "esic_card_no",
-				"label": "ESIC IP Number",
-				"fieldtype": "Data",
-				"insert_after": "india_payroll_esi_section",
-				"translatable": 0,
-				"description": "Employee's ESIC Insurance Number (IP Number) issued by ESIC",
-			},
-			{
-				"fieldname": "is_person_with_disability",
-				"label": "Person with Disability",
-				"fieldtype": "Check",
-				"insert_after": "esic_card_no",
-				"description": "ESIC wage ceiling is \u20b925,000 instead of \u20b921,000 for persons with disability",
-			},
-			{
-				"fieldname": "india_payroll_lwf_section",
-				"label": "Labour Welfare Fund",
-				"fieldtype": "Section Break",
-				"insert_after": "is_person_with_disability",
-			},
-			{
-				"fieldname": "lwf_exempted",
-				"label": "LWF Exempted",
-				"fieldtype": "Check",
-				"insert_after": "india_payroll_lwf_section",
-				"description": "Manually exempt this employee from Labour Welfare Fund deduction. This setting is preserved across payroll runs.",
-			},
-			{
-				"fieldname": "lwf_exemption_reason",
-				"label": "LWF Exemption Reason",
-				"fieldtype": "Small Text",
-				"insert_after": "lwf_exempted",
-				"depends_on": "eval:doc.lwf_exempted",
-				"translatable": 0,
-			},
-			{
-				"fieldname": "india_payroll_epf_section",
-				"label": "Employee Provident Fund",
-				"fieldtype": "Section Break",
-				"insert_after": "lwf_exemption_reason",
-			},
-			{
-				"fieldname": "epf_applicable",
-				"label": "EPF Applicable",
-				"fieldtype": "Check",
-				"insert_after": "india_payroll_epf_section",
-				"description": (
-					"Opt this employee into EPF deduction. The system defers to this "
-					"flag rather than enforcing a wage-based eligibility rule."
-				),
-			},
-			{
-				"fieldname": "uan_number",
-				"label": "UAN",
-				"fieldtype": "Data",
-				"insert_after": "epf_applicable",
-				"translatable": 0,
-				"description": "12-digit Universal Account Number issued by EPFO.",
-			},
-			{
-				"fieldname": "pf_name",
-				"label": "Name as per UAN",
-				"fieldtype": "Data",
-				"insert_after": "uan_number",
-				"translatable": 0,
-				"description": "Employee name as registered with EPFO. May differ from HR name; used in the ECR file.",
-			},
-			{
-				"fieldname": "india_payroll_epf_cb",
-				"fieldtype": "Column Break",
-				"insert_after": "pf_name",
-			},
-			{
-				"fieldname": "contribute_on_actual_pf_wage",
-				"label": "Contribute on Actual PF Wage",
-				"fieldtype": "Check",
-				"insert_after": "india_payroll_epf_cb",
-				"description": (
-					"If checked, employee + employer EPF contributions are computed on the "
-					"actual PF wage when it exceeds ₹15,000. EPS and EDLI remain capped by law."
-				),
-			},
-			{
-				"fieldname": "vpf_mode",
-				"label": "VPF Mode",
-				"fieldtype": "Select",
-				"options": "Amount\nPercentage",
-				"default": "Amount",
-				"insert_after": "contribute_on_actual_pf_wage",
-				"description": "Whether VPF is deducted as a fixed monthly amount or a % of PF wages.",
-			},
-			{
-				"fieldname": "vpf_percentage",
-				"label": "VPF Percentage",
-				"fieldtype": "Percent",
-				"insert_after": "vpf_mode",
-				"depends_on": "eval:doc.vpf_mode == 'Percentage'",
-				"description": "Voluntary Provident Fund — additional employee contribution rate over 12%.",
-			},
-			{
-				"fieldname": "vpf_amount",
-				"label": "VPF Amount",
-				"fieldtype": "Currency",
-				"insert_after": "vpf_percentage",
-				"depends_on": "eval:doc.vpf_mode == 'Amount'",
-				"description": (
-					"Fixed monthly VPF amount elected by the employee. "
-					"Prorated by payment days when there is LOP."
-				),
-			},
 		],
 		"Income Tax Slab": [
 			{
@@ -404,6 +318,114 @@ def get_custom_fields():
 				"fieldtype": "Autocomplete",
 				"options": "\n".join(INDIA_STATES),
 				"insert_after": "employee",
+				"allow_on_submit": 1,
+			},
+			{
+				"fieldname": "india_payroll_tab",
+				"label": "India Payroll",
+				"fieldtype": "Tab Break",
+				"insert_after": "payroll_cost_centers",
+			},
+			{
+				"fieldname": "india_payroll_esi_section",
+				"label": "Employee State Insurance",
+				"fieldtype": "Section Break",
+				"insert_after": "india_payroll_tab",
+			},
+			{
+				"fieldname": "is_person_with_disability",
+				"label": "Person with Disability",
+				"fieldtype": "Check",
+				"insert_after": "india_payroll_esi_section",
+				"allow_on_submit": 1,
+				"description": "ESIC wage ceiling is ₹25,000 instead of ₹21,000 for persons with disability",
+			},
+			{
+				"fieldname": "india_payroll_lwf_section",
+				"label": "Labour Welfare Fund",
+				"fieldtype": "Section Break",
+				"insert_after": "is_person_with_disability",
+			},
+			{
+				"fieldname": "lwf_exempted",
+				"label": "LWF Exempted",
+				"fieldtype": "Check",
+				"insert_after": "india_payroll_lwf_section",
+				"allow_on_submit": 1,
+				"description": "Exempt this employee from Labour Welfare Fund deduction for this assignment.",
+			},
+			{
+				"fieldname": "lwf_exemption_reason",
+				"label": "LWF Exemption Reason",
+				"fieldtype": "Small Text",
+				"insert_after": "lwf_exempted",
+				"depends_on": "eval:doc.lwf_exempted",
+				"allow_on_submit": 1,
+				"translatable": 0,
+			},
+			{
+				"fieldname": "india_payroll_epf_section",
+				"label": "Employee Provident Fund",
+				"fieldtype": "Section Break",
+				"insert_after": "lwf_exemption_reason",
+			},
+			{
+				"fieldname": "epf_applicable",
+				"label": "EPF Applicable",
+				"fieldtype": "Check",
+				"insert_after": "india_payroll_epf_section",
+				"allow_on_submit": 1,
+				"description": (
+					"Opt this employee into EPF deduction for this assignment. The system "
+					"defers to this flag rather than enforcing a wage-based eligibility rule."
+				),
+			},
+			{
+				"fieldname": "contribute_on_actual_pf_wage",
+				"label": "Contribute on Actual PF Wage",
+				"fieldtype": "Check",
+				"insert_after": "epf_applicable",
+				"allow_on_submit": 1,
+				"description": (
+					"If checked, employee + employer EPF contributions are computed on the "
+					"actual PF wage when it exceeds ₹15,000. EPS and EDLI remain capped by law."
+				),
+			},
+			{
+				"fieldname": "india_payroll_epf_cb",
+				"fieldtype": "Column Break",
+				"insert_after": "contribute_on_actual_pf_wage",
+			},
+			{
+				"fieldname": "vpf_mode",
+				"label": "VPF Mode",
+				"fieldtype": "Select",
+				"options": "Amount\nPercentage",
+				"default": "Amount",
+				"insert_after": "india_payroll_epf_cb",
+				"allow_on_submit": 1,
+				"description": "Whether VPF is deducted as a fixed monthly amount or a % of PF wages.",
+			},
+			{
+				"fieldname": "vpf_percentage",
+				"label": "VPF Percentage",
+				"fieldtype": "Percent",
+				"insert_after": "vpf_mode",
+				"depends_on": "eval:doc.vpf_mode == 'Percentage'",
+				"allow_on_submit": 1,
+				"description": "Voluntary Provident Fund — additional employee contribution rate over 12%.",
+			},
+			{
+				"fieldname": "vpf_amount",
+				"label": "VPF Amount",
+				"fieldtype": "Currency",
+				"insert_after": "vpf_percentage",
+				"depends_on": "eval:doc.vpf_mode == 'Amount'",
+				"allow_on_submit": 1,
+				"description": (
+					"Fixed monthly VPF amount elected by the employee. "
+					"Prorated by payment days when there is LOP."
+				),
 			},
 		],
 	}

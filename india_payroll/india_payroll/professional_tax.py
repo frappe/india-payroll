@@ -4,6 +4,8 @@ import frappe
 from frappe.query_builder.functions import Sum
 from frappe.utils import flt, getdate
 
+from india_payroll.india_payroll.utils import get_slip_ssa_values
+
 PT_SALARY_COMPONENT = "Professional Tax"
 
 # ---------------------------------------------------------------------------
@@ -188,11 +190,14 @@ STATE_PT_CONFIG = {
 
 def apply_professional_tax(doc, method=None) -> None:
 	"""
-	Salary Slip — before_save hook.
+	Salary Slip regional deduction hook (see apply_regional_deductions).
 
 	Computes and injects the correct Professional Tax deduction for the
 	employee based on their employment state (set on Salary Structure
-	Assignment).  Recalculates total_deduction and net_pay after injection.
+	Assignment).
+
+	Only mutates ``doc.deductions``; the slip's ``set_net_pay`` (which runs
+	immediately after this hook in ``calculate_net_pay``) recomputes totals.
 	"""
 	if not frappe.db.get_single_value("Payroll Settings", "enable_professional_tax"):
 		return
@@ -200,7 +205,7 @@ def apply_professional_tax(doc, method=None) -> None:
 	if not doc.salary_structure:
 		return
 
-	employment_state = _get_employment_state(doc)
+	employment_state = get_slip_ssa_values(doc, ["employment_state"]).get("employment_state")
 
 	if not employment_state or employment_state not in STATE_PT_CONFIG:
 		return
@@ -250,23 +255,6 @@ def validate_employment_state(doc, method=None) -> None:
 			).format(frappe.bold(doc.employee_name or doc.employee)),
 			title=frappe._("Missing Employment State"),
 		)
-
-
-def _get_employment_state(doc) -> str | None:
-	"""
-	Return the employment_state from the given Salary Structure Assignment.
-	"""
-
-	return frappe.db.get_value(
-		"Salary Structure Assignment",
-		filters={
-			"employee": doc.employee,
-			"company": doc.company,
-			"from_date": ("<=", doc.start_date),
-			"salary_structure": doc.salary_structure,
-		},
-		fieldname="employment_state",
-	)
 
 
 def _compute_pt_monthly(gross_pay: float, state_config: dict, month: int, gender: str) -> float:
@@ -390,8 +378,10 @@ def _cumulative_pt_deducted(
 def _update_pt_in_salary_slip(doc, pt_amount: float) -> None:
 	"""
 	Remove any existing Professional Tax deduction row and add a fresh one
-	for `pt_amount`.  Then recalculate total_deduction and net_pay so that
-	downstream processing sees correct figures.
+	for `pt_amount`.
+
+	Only mutates ``doc.deductions``; the slip's ``set_net_pay`` (which runs
+	immediately after this hook in ``calculate_net_pay``) recomputes totals.
 	"""
 	# Remove any existing PT row (e.g. from a previous save or manual entry)
 	doc.deductions = [d for d in doc.deductions if d.salary_component != PT_SALARY_COMPONENT]
@@ -404,14 +394,6 @@ def _update_pt_in_salary_slip(doc, pt_amount: float) -> None:
 				"amount": flt(pt_amount),
 			},
 		)
-
-	# Recalculate running totals
-	doc.total_deduction = sum(flt(d.amount) for d in doc.deductions if not d.do_not_include_in_total)
-	# Loan repayment is tracked outside `deductions` (see Salary Slip.set_net_pay),
-	# so subtract it explicitly or net pay comes out too high.
-	doc.net_pay = flt(doc.gross_pay) - (flt(doc.total_deduction) + flt(doc.get("total_loan_repayment")))
-	if hasattr(doc, "rounded_total"):
-		doc.rounded_total = round(doc.net_pay)
 
 
 def _slab_amount(salary: float, slabs: list[dict]) -> float:

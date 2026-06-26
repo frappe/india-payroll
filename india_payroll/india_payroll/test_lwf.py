@@ -109,6 +109,14 @@ class TestLWF(HRMSTestSuite):
 
 		return employee, salary_slip
 
+	def _set_ssa(self, employee: str, values: dict) -> str:
+		"""Set India Payroll statutory config on the employee's salary structure assignment."""
+		ssa = frappe.db.get_value(
+			"Salary Structure Assignment", {"employee": employee}, "name", order_by="from_date desc"
+		)
+		frappe.db.set_value("Salary Structure Assignment", ssa, values)
+		return ssa
+
 	@HRMSTestSuite.change_settings(
 		"Payroll Settings",
 		{"enable_lwf": 1, "enable_professional_tax": 0, "enable_esic": 0},
@@ -254,7 +262,7 @@ class TestLWF(HRMSTestSuite):
 			start_date="2026-04-01",
 			end_date="2026-04-30",
 		)
-		frappe.db.set_value("Employee", employee, "lwf_exempted", 1)
+		self._set_ssa(employee, {"lwf_exempted": 1})
 
 		salary_slip.insert()
 

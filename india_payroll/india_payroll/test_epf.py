@@ -45,6 +45,7 @@ _TEST_EMAILS = [
 	"test_epf_not_applicable@indiapayroll.com",
 	"test_epf_disabled_setting@indiapayroll.com",
 	"test_epf_net_pay@indiapayroll.com",
+	"test_epf_preview@indiapayroll.com",
 ]
 
 
@@ -87,11 +88,10 @@ class TestEPF(HRMSTestSuite):
 		"""
 		Create a salary slip whose Basic (PF-eligible) equals `gross_pay`.
 
-		Sets Employee.epf_applicable so the hook treats the employee as
-		opted into EPF deduction.
+		Sets epf_applicable on the Salary Structure Assignment so the hook treats
+		the employee as opted into EPF deduction.
 		"""
 		employee = make_employee(email, company="_Test Company")
-		frappe.db.set_value("Employee", employee, "epf_applicable", 1 if epf_applicable else 0)
 
 		salary_structure = make_salary_structure(
 			structure_name,
@@ -102,12 +102,16 @@ class TestEPF(HRMSTestSuite):
 			deductions=[],
 		)
 
-		create_salary_structure_assignment(
+		ssa = create_salary_structure_assignment(
 			employee,
 			salary_structure.name,
 			from_date=start_date,
 			company="_Test Company",
 			base=gross_pay,
+		)
+		# EPF opt-in now lives on the assignment, not the Employee master.
+		frappe.db.set_value(
+			"Salary Structure Assignment", ssa.name, "epf_applicable", 1 if epf_applicable else 0
 		)
 
 		salary_slip = make_salary_slip(
@@ -119,6 +123,14 @@ class TestEPF(HRMSTestSuite):
 		salary_slip.end_date = end_date
 
 		return employee, salary_slip
+
+	def _set_ssa(self, employee: str, values: dict) -> str:
+		"""Set India Payroll statutory config on the employee's salary structure assignment."""
+		ssa = frappe.db.get_value(
+			"Salary Structure Assignment", {"employee": employee}, "name", order_by="from_date desc"
+		)
+		frappe.db.set_value("Salary Structure Assignment", ssa, values)
+		return ssa
 
 	@staticmethod
 	def _amount(slip, table: str, component: str) -> float:
@@ -178,7 +190,7 @@ class TestEPF(HRMSTestSuite):
 			"Test EPF Above Ceiling Actual Structure",
 			gross,
 		)
-		frappe.db.set_value("Employee", employee, "contribute_on_actual_pf_wage", 1)
+		self._set_ssa(employee, {"contribute_on_actual_pf_wage": 1})
 		slip.insert()
 
 		self.assertEqual(self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT), 3_000)
@@ -199,11 +211,7 @@ class TestEPF(HRMSTestSuite):
 			"Test EPF VPF Structure",
 			gross,
 		)
-		frappe.db.set_value(
-			"Employee",
-			employee,
-			{"vpf_mode": "Percentage", "vpf_percentage": 5},
-		)
+		self._set_ssa(employee, {"vpf_mode": "Percentage", "vpf_percentage": 5})
 		slip.insert()
 
 		self.assertEqual(self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT), 1_800)
@@ -224,11 +232,7 @@ class TestEPF(HRMSTestSuite):
 			"Test EPF VPF Amount Structure",
 			gross,
 		)
-		frappe.db.set_value(
-			"Employee",
-			employee,
-			{"vpf_mode": "Amount", "vpf_amount": 2_000, "vpf_percentage": 5},
-		)
+		self._set_ssa(employee, {"vpf_mode": "Amount", "vpf_amount": 2_000, "vpf_percentage": 5})
 		slip.insert()
 
 		self.assertEqual(self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT), 1_800)
@@ -246,27 +250,19 @@ class TestEPF(HRMSTestSuite):
 		"""
 		from india_payroll.india_payroll.epf import _compute_vpf
 
-		employee = make_employee(
-			"test_epf_vpf_amount_lop@indiapayroll.com",
-			company="_Test Company",
-		)
-		frappe.db.set_value(
-			"Employee",
-			employee,
-			{"vpf_mode": "Amount", "vpf_amount": 3_000},
-		)
+		vpf_args = {"vpf_mode": "Amount", "vpf_amount": 3_000}
 
 		# Full month: no proration.
-		full = frappe._dict(employee=employee, payment_days=30, total_working_days=30)
-		self.assertEqual(_compute_vpf(full, epf_base=15_000), 3_000)
+		full = frappe._dict(payment_days=30, total_working_days=30)
+		self.assertEqual(_compute_vpf(full, 15_000, **vpf_args), 3_000)
 
 		# 5 LOP days in a 30-day month → 25/30 * 3000 = 2500.
-		lop = frappe._dict(employee=employee, payment_days=25, total_working_days=30)
-		self.assertEqual(_compute_vpf(lop, epf_base=15_000), 2_500)
+		lop = frappe._dict(payment_days=25, total_working_days=30)
+		self.assertEqual(_compute_vpf(lop, 15_000, **vpf_args), 2_500)
 
 		# Fractional payment_days (half-day LOP) — 24.5/30 * 3000 = 2450.
-		half_day = frappe._dict(employee=employee, payment_days=24.5, total_working_days=30)
-		self.assertEqual(_compute_vpf(half_day, epf_base=15_000), 2_450)
+		half_day = frappe._dict(payment_days=24.5, total_working_days=30)
+		self.assertEqual(_compute_vpf(half_day, 15_000, **vpf_args), 2_450)
 
 	@HRMSTestSuite.change_settings(
 		"Payroll Settings",
@@ -310,6 +306,32 @@ class TestEPF(HRMSTestSuite):
 		"Payroll Settings",
 		{"enable_epf": 1, "enable_professional_tax": 0, "enable_esic": 0, "enable_lwf": 0},
 	)
+	def test_epf_injected_in_preview(self):
+		"""
+		Regression: statutory deductions must be injected during the salary slip
+		preview (``process_salary_structure``), not only on save.
+
+		The injectors run via the ``apply_regional_deductions`` regional override
+		called inside ``calculate_net_pay``, so driving the preview path alone (no
+		insert/save) must still produce the EPF deduction row.
+		"""
+		gross = float(EPF_WAGE_CEILING)
+		_, slip = self._make_salary_slip(
+			"test_epf_preview@indiapayroll.com",
+			"Test EPF Preview Structure",
+			gross,
+		)
+
+		# Drive only the preview path — never insert the slip.
+		slip.process_salary_structure(for_preview=1)
+
+		self.assertEqual(self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT), 1_800)
+		self.assertEqual(slip.docstatus, 0, "Preview must not persist the salary slip")
+
+	@HRMSTestSuite.change_settings(
+		"Payroll Settings",
+		{"enable_epf": 1, "enable_professional_tax": 0, "enable_esic": 0, "enable_lwf": 0},
+	)
 	def test_net_pay_reduced_only_by_employee_share(self):
 		"""
 		Net pay must drop only by Employee PF + VPF.  Employer contributions
@@ -322,11 +344,7 @@ class TestEPF(HRMSTestSuite):
 			"Test EPF Net Pay Structure",
 			gross,
 		)
-		frappe.db.set_value(
-			"Employee",
-			employee,
-			{"vpf_mode": "Percentage", "vpf_percentage": 5},
-		)
+		self._set_ssa(employee, {"vpf_mode": "Percentage", "vpf_percentage": 5})
 		slip.insert()
 
 		expected_deduction = 1_800 + 750  # employee 12% + VPF 5%

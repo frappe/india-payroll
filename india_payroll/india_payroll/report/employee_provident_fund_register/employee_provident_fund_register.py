@@ -16,6 +16,7 @@ from india_payroll.india_payroll.epf import (
 	VPF_COMPONENT,
 	_epfo_round,
 )
+from india_payroll.india_payroll.utils import get_effective_ssa_values
 
 _MONTHS = {
 	"January": 1,
@@ -153,6 +154,9 @@ def get_data(filters):
 		.select(
 			SS.name.as_("slip"),
 			SS.employee,
+			SS.company,
+			SS.salary_structure,
+			SS.start_date,
 			SS.gross_pay,
 			SS.currency,
 			SS.leave_without_pay,
@@ -171,9 +175,7 @@ def get_data(filters):
 		query = query.where(SS.start_date >= date_range["from_date"])
 		query = query.where(SS.start_date <= date_range["to_date"])
 
-	# These are custom fields from india_payroll/install.py; tolerate
-	# sites that haven't migrated yet.
-	for f in ("uan_number", "pf_name", "epf_applicable", "contribute_on_actual_pf_wage"):
+	for f in ("uan_number", "pf_name"):
 		if frappe.db.has_column("Employee", f):
 			query = query.select(getattr(Emp, f))
 
@@ -181,13 +183,23 @@ def get_data(filters):
 	if not slips:
 		return []
 
-	# Only employees opted into EPF appear in the register. If the field
-	# isn't on the site yet, fall through to including everyone — the
-	# computation will still be correct, just possibly broader.
-	if frappe.db.has_column("Employee", "epf_applicable"):
-		slips = [s for s in slips if s.get("epf_applicable")]
-		if not slips:
-			return []
+	# EPF opt-in and the actual-wage rule live on the Salary Structure Assignment.
+	# Resolve the assignment effective for each slip's period.
+	for s in slips:
+		ssa = get_effective_ssa_values(
+			s.employee,
+			s.company,
+			s.salary_structure,
+			s.start_date,
+			["epf_applicable", "contribute_on_actual_pf_wage"],
+		)
+		s["epf_applicable"] = ssa.get("epf_applicable")
+		s["contribute_on_actual_pf_wage"] = ssa.get("contribute_on_actual_pf_wage")
+
+	# Only employees opted into EPF on their assignment appear in the register.
+	slips = [s for s in slips if s.get("epf_applicable")]
+	if not slips:
+		return []
 
 	totals_by_slip = _aggregate_salary_detail([s.slip for s in slips])
 

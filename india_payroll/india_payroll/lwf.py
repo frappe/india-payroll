@@ -4,6 +4,8 @@
 import frappe
 from frappe.utils import flt, getdate
 
+from india_payroll.india_payroll.utils import get_slip_ssa_values
+
 LWF_SALARY_COMPONENT = "Labour Welfare Fund"
 
 # State-wise Labour Welfare Fund configuration (as of May 2026)
@@ -37,7 +39,7 @@ _ANNUAL_MONTHS = frozenset({12})  # December only
 
 def apply_lwf(doc, method=None) -> None:
 	"""
-	Salary Slip — before_save hook.
+	Salary Slip regional deduction hook (see apply_regional_deductions).
 
 	Injects or removes the Labour Welfare Fund deduction based on:
 	  • Whether LWF is enabled in Payroll Settings
@@ -62,18 +64,18 @@ def apply_lwf(doc, method=None) -> None:
 		)
 		return
 
-	employment_state = _get_employment_state(doc)
+	ssa = get_slip_ssa_values(doc, ["employment_state", "lwf_exempted"])
+	employment_state = ssa.get("employment_state")
 
 	if not employment_state or employment_state not in LWF_STATE_CONFIG:
 		# State has no LWF — remove any stale row from previous state
 		_remove_lwf_component(doc)
 		return
 
-	# Honour manual HR exemption (custom field may not exist on all installs)
-	if frappe.db.has_column("Employee", "lwf_exempted"):
-		if frappe.db.get_value("Employee", doc.employee, "lwf_exempted"):
-			_remove_lwf_component(doc)
-			return
+	# Honour manual HR exemption set on the assignment
+	if ssa.get("lwf_exempted"):
+		_remove_lwf_component(doc)
+		return
 
 	state_config = LWF_STATE_CONFIG[employment_state]
 	payroll_month = getdate(doc.start_date).month
@@ -98,26 +100,9 @@ def _is_deduction_month(frequency: str, month: int) -> bool:
 	return False
 
 
-def _get_employment_state(doc) -> str | None:
-	"""Return the employment_state from the matching Salary Structure Assignment."""
-	return frappe.db.get_value(
-		"Salary Structure Assignment",
-		filters={
-			"employee": doc.employee,
-			"company": doc.company,
-			"from_date": ("<=", doc.start_date),
-			"salary_structure": doc.salary_structure,
-		},
-		fieldname="employment_state",
-	)
-
-
 def _remove_lwf_component(doc) -> None:
-	"""Remove the LWF salary component from deductions; recalculate if changed."""
-	before = len(doc.deductions)
+	"""Remove the LWF salary component from deductions."""
 	doc.deductions = [d for d in doc.deductions if d.salary_component != LWF_SALARY_COMPONENT]
-	if len(doc.deductions) != before:
-		_recalculate_totals(doc)
 
 
 def _update_lwf_in_salary_slip(doc, employee_amount: float) -> None:
@@ -133,15 +118,3 @@ def _update_lwf_in_salary_slip(doc, employee_amount: float) -> None:
 				"amount": employee_amount,
 			},
 		)
-
-	_recalculate_totals(doc)
-
-
-def _recalculate_totals(doc) -> None:
-	"""Recompute total_deduction and net_pay after modifying deduction rows."""
-	doc.total_deduction = sum(flt(d.amount) for d in doc.deductions if not d.do_not_include_in_total)
-	# Loan repayment is tracked outside `deductions` (see Salary Slip.set_net_pay),
-	# so subtract it explicitly or net pay comes out too high.
-	doc.net_pay = flt(doc.gross_pay) - (flt(doc.total_deduction) + flt(doc.get("total_loan_repayment")))
-	if hasattr(doc, "rounded_total"):
-		doc.rounded_total = round(doc.net_pay)
