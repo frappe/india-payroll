@@ -87,14 +87,13 @@ frappe.query_reports["LWF Register"] = {
 		value = default_formatter(value, row, column, data);
 		if (column.fieldname === "deduction_status" && data) {
 			const colours = {
-				Deducted: "#2d8a2d",
-				"Non-Deduction Month": "#888",
-				Exempted: "#1a5fa8",
-				"No LWF State": "#aaa",
+				Deducted: "green",
+				"Non-Deduction Month": "darkgrey",
+				Exempted: "blue",
+				"No LWF State": "grey",
 			};
 			const bg = colours[data.deduction_status] || "#888";
-			value = `<span style="background:${bg};color:#fff;border-radius:10px;
-				padding:1px 10px;font-size:0.8em;white-space:nowrap;">${data.deduction_status}</span>`;
+			value = `<span class="indicator-pill ${bg}">${data.deduction_status}</span>`;
 		}
 		if (column.fieldname === "frequency" && data && data.frequency) {
 			value = `<span style="font-size:0.85em;color:#555;">${data.frequency}</span>`;

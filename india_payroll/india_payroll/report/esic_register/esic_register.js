@@ -66,10 +66,9 @@ frappe.query_reports["ESIC Register"] = {
 	formatter(value, row, column, data, default_formatter) {
 		value = default_formatter(value, row, column, data);
 		if (column.fieldname === "coverage_status" && data) {
-			const colours = { Covered: "#2d8a2d", PwD: "#1a5fa8", Exempt: "#888" };
+			const colours = { Covered: "green", PwD: "blue", Exempt: "grey" };
 			const bg = colours[data.coverage_status] || "#888";
-			value = `<span style="background:${bg};color:#fff;border-radius:10px;
-				padding:1px 10px;font-size:0.8em;white-space:nowrap;">${data.coverage_status}</span>`;
+			value = `<span class="indicator-pill ${bg}">${data.coverage_status}</span>`;
 		}
 		return value;
 	},
