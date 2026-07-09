@@ -95,9 +95,6 @@ frappe.query_reports["LWF Register"] = {
 			const bg = colours[data.deduction_status] || "grey";
 			value = `<span class="indicator-pill ${bg}">${data.deduction_status}</span>`;
 		}
-		if (column.fieldname === "frequency" && data && data.frequency) {
-			value = `<span style="font-size:0.85em;color:#555;">${data.frequency}</span>`;
-		}
 		return value;
 	},
 
