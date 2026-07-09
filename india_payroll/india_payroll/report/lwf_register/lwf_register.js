@@ -92,7 +92,7 @@ frappe.query_reports["LWF Register"] = {
 				Exempted: "blue",
 				"No LWF State": "grey",
 			};
-			const bg = colours[data.deduction_status] || "#888";
+			const bg = colours[data.deduction_status] || "grey";
 			value = `<span class="indicator-pill ${bg}">${data.deduction_status}</span>`;
 		}
 		if (column.fieldname === "frequency" && data && data.frequency) {
