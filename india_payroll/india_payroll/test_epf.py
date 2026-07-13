@@ -19,9 +19,10 @@ from india_payroll.india_payroll.epf import (
 )
 from india_payroll.install import create_epf_components
 
-# The earning component used as Basic across all EPF tests. Every earning
-# component now counts toward PF wage; formula `base` keeps gross_pay equal to
-# the SSA base for predictable assertions.
+# The earning component used as Basic across all EPF tests. Basic is
+# PF-eligible; formula `base` keeps gross_pay equal to the SSA base for
+# predictable assertions. HRA and Additional-Salary earnings are excluded from
+# PF wage (see test_pf_wage_excludes_hra_and_additional_salary).
 _EPF_BASIC_COMPONENT = "EPF Test Basic"
 _EPF_TEST_EARNINGS = [
 	{
@@ -263,6 +264,30 @@ class TestEPF(HRMSTestSuite):
 		# Fractional payment_days (half-day LOP) — 24.5/30 * 3000 = 2450.
 		half_day = frappe._dict(payment_days=24.5, total_working_days=30)
 		self.assertEqual(_compute_vpf(half_day, 15_000, **vpf_args), 2_450)
+
+	def test_pf_wage_excludes_hra_and_additional_salary(self):
+		"""
+		PF wage must count only PF-eligible earnings. HRA (identified from the
+		Company master's ``hra_component``) and any earning sourced from an
+		Additional Salary (bonuses/incentives, flagged by ``additional_salary``)
+		are excluded — only Basic remains.
+		"""
+		from india_payroll.india_payroll.epf import _compute_pf_wage
+
+		# Point the Company at an HRA component so the lookup resolves.
+		frappe.db.set_value("Company", "_Test Company", "hra_component", "HRA")
+
+		doc = frappe._dict(
+			company="_Test Company",
+			earnings=[
+				frappe._dict(salary_component="Basic Salary", amount=20_000),
+				frappe._dict(salary_component="HRA", amount=8_000),
+				frappe._dict(salary_component="Bonus", amount=5_000, additional_salary="ADSAL-0001"),
+			],
+		)
+
+		# Only Basic counts → 20,000 (HRA and the Additional-Salary bonus dropped).
+		self.assertEqual(_compute_pf_wage(doc), 20_000)
 
 	@HRMSTestSuite.change_settings(
 		"Payroll Settings",

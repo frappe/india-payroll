@@ -201,7 +201,7 @@ def get_data(filters):
 	if not slips:
 		return []
 
-	totals_by_slip = _aggregate_salary_detail([s.slip for s in slips])
+	totals_by_slip = _aggregate_salary_detail({s.slip: s.company for s in slips})
 
 	data = []
 	for s in slips:
@@ -252,29 +252,44 @@ def get_data(filters):
 	return data
 
 
-def _aggregate_salary_detail(slip_names: list) -> dict:
+def _aggregate_salary_detail(company_by_slip: dict) -> dict:
 	"""One Salary Detail sweep across all slips in the report.
 
-	PF wage is the sum of every earning row — all earning components count.
+	PF wage is the sum of PF-eligible earnings, mirroring ``epf._compute_pf_wage``:
+	HRA (identified from each slip's Company master ``hra_component``) and any
+	earning sourced from an Additional Salary (bonuses/incentives) are excluded.
 
 	Returns: { slip_name: { "pf_wage": ..., "Provident Fund": ..., "Voluntary Provident Fund": ... } }
 	"""
-	if not slip_names:
+	if not company_by_slip:
 		return {}
+
+	# Cache hra_component per company so multi-company reports do one lookup each.
+	hra_by_company: dict[str, str | None] = {}
+	for company in set(company_by_slip.values()):
+		hra_by_company[company] = (
+			frappe.db.get_value("Company", company, "hra_component") if company else None
+		)
 
 	rows = frappe.get_all(
 		"Salary Detail",
 		filters={
 			"parenttype": "Salary Slip",
-			"parent": ("in", slip_names),
+			"parent": ("in", list(company_by_slip)),
 		},
-		fields=["parent", "parentfield", "salary_component", "amount"],
+		fields=["parent", "parentfield", "salary_component", "amount", "additional_salary"],
 	)
 
 	totals: dict[str, dict] = {}
 	for r in rows:
 		bucket = totals.setdefault(r.parent, {})
 		if r.parentfield == "earnings":
+			hra_component = hra_by_company.get(company_by_slip.get(r.parent))
+			# Exclude HRA and Additional-Salary earnings from PF wage.
+			if hra_component and r.salary_component == hra_component:
+				continue
+			if r.additional_salary:
+				continue
 			bucket["pf_wage"] = flt(bucket.get("pf_wage")) + flt(r.amount)
 		elif r.parentfield == "deductions" and r.salary_component in (
 			EPF_EMPLOYEE_COMPONENT,

@@ -108,13 +108,33 @@ def _required_components_exist() -> bool:
 
 def _compute_pf_wage(doc) -> float:
 	"""
-	Sum every earning amount on the slip — all earning components count
-	toward PF wage.
+	Sum the PF-eligible earnings on the slip.
+
+	PF wage is *not* gross pay. Two categories of earning are excluded per
+	EPF statute (Sec. 2(b) excludes HRA; the EPFO circular excludes ad-hoc /
+	incentive-type pay):
+
+	  • HRA — identified from the Company master's ``hra_component`` field.
+	  • Any earning sourced from an Additional Salary (bonuses, incentives,
+	    arrears and other one-off components), flagged by ``additional_salary``
+	    on the slip row.
 
 	Amounts on `doc.earnings` are already prorated for LOP / payment_days by
 	the Salary Slip controller, so the returned PF wage reflects NCP days.
 	"""
-	return sum(flt(e.amount) for e in doc.earnings)
+	hra_component = frappe.db.get_value("Company", doc.company, "hra_component") if doc.company else None
+
+	total = 0.0
+	for e in doc.earnings:
+		# Skip HRA — excluded from PF wage by statute.
+		if hra_component and e.salary_component == hra_component:
+			continue
+		# Skip anything injected from an Additional Salary (bonuses/incentives).
+		if e.get("additional_salary"):
+			continue
+		total += flt(e.amount)
+
+	return total
 
 
 def _compute_vpf(doc, epf_base: float, *, vpf_mode=None, vpf_percentage=None, vpf_amount=None) -> float:
