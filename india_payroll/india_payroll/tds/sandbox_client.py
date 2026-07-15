@@ -7,6 +7,7 @@ Auth flow (Sandbox):
         x-api-key, x-api-version, Content-Type: application/json
 """
 
+import base64
 import json
 
 import frappe
@@ -14,7 +15,10 @@ import requests
 from frappe import _
 from frappe.utils import add_to_date, cint, get_datetime, now_datetime
 
+# Sandbox selects the environment by host: live keys (key_live_…) work only against the
+# production host, test keys (key_test_…) only against the test host. There is no mode header.
 DEFAULT_BASE_URL = "https://api.sandbox.co.in"
+TEST_BASE_URL = "https://test-api.sandbox.co.in"
 DEFAULT_API_VERSION = "1.0.0"
 # Sandbox tokens are valid 24h; refresh a little early to avoid edge expiry.
 TOKEN_TTL_HOURS = 23
@@ -23,6 +27,46 @@ REQUEST_TIMEOUT = 60
 # Header/body keys whose values must never be written to logs. A frozenset so it
 # cannot be mutated in place at runtime (defense-in-depth against accidental edits).
 SENSITIVE_KEYS = frozenset({"x-api-key", "x-api-secret", "authorization", "access_token", "api_secret"})
+
+
+def _mock_response(method: str, endpoint: str, json_body: dict | None = None) -> dict:
+	"""Canned Sandbox responses for offline mock mode (SandboxTDSClient.mock).
+
+	Keyed by endpoint + method: a POST creates a job (no presigned URL, so the sheet upload is
+	skipped); a GET polls a job and reports it completed with the payload each step's result
+	handler expects. Lets the whole filing pipeline be exercised without the real API.
+	"""
+	ep = (endpoint or "").lower()
+	body = json_body or {}
+
+	def b64(text: str) -> str:
+		return base64.b64encode(text.encode()).decode()
+
+	# CSI file fetch (a POST, but returns a file rather than a job)
+	if "csi" in ep:
+		return {"data": {"csi_file_base64": b64("MOCK-CSI-FILE\n")}}
+
+	# Job creation
+	if method.upper() == "POST":
+		tag = ep.rstrip("/").rsplit("/", 1)[-1]
+		return {"data": {"job_id": f"MOCK-{tag}-{body.get('tan', 'TAN')}"}}
+
+	# Job poll -> completed, with the result fields each step's handler reads
+	data = {"status": "completed"}
+	if "potential-notices" in ep:
+		data["issues"] = []
+	elif "txt" in ep:
+		data["txt_file_base64"] = b64("MOCK-TXT-FILE\n")
+	elif "fvu" in ep:
+		data["fvu_file_base64"] = b64("MOCK-FVU-FILE\n")
+		# Form 27A is optional; omit it so we don't attach an invalid PDF (Frappe parses PDF
+		# attachments to build a preview, which would choke on placeholder bytes).
+	elif "e-file" in ep:
+		data["token_number"] = "MOCKTOKEN0001"
+		data["provisional_receipt_number"] = "MOCKPRN0001"
+	return {"data": data}
+
+
 MASK = "***masked***"
 
 INTEGRATION_SERVICE = "Sandbox TDS API"
@@ -61,11 +105,19 @@ class SandboxTDSClient:
 		self.api_version = self.settings.get("tds_api_version") or DEFAULT_API_VERSION
 		self.sandbox_mode = cint(self.settings.get("tds_sandbox_mode"))
 
-		if not (self.api_key and self.api_secret):
+		# Offline mock mode: when site_config `sandbox_tds_mock` is set, every call returns a
+		# canned success response instead of hitting Sandbox. Lets the full validate -> TXT ->
+		# FVU -> e-file pipeline be exercised end to end (status transitions, attachments, filing
+		# log) without depending on Sandbox's account-specific test-environment examples.
+		self.mock = cint(frappe.conf.get("sandbox_tds_mock"))
+
+		if not self.mock and not (self.api_key and self.api_secret):
 			frappe.throw(_("Sandbox API Key and Secret are required in Payroll Settings."))
 
-		# Allow a site-level override of the base URL (e.g. for a staging host).
-		self.base_url = (frappe.conf.get("sandbox_tds_base_url") or DEFAULT_BASE_URL).rstrip("/")
+		# Route to the environment that matches the configured key: test host in sandbox mode,
+		# production host otherwise. A site-level override still wins (e.g. for a staging host).
+		default_base_url = TEST_BASE_URL if self.sandbox_mode else DEFAULT_BASE_URL
+		self.base_url = (frappe.conf.get("sandbox_tds_base_url") or default_base_url).rstrip("/")
 		self._session = requests.Session()
 
 	# ---------------------------------------------------------------- auth
@@ -121,6 +173,9 @@ class SandboxTDSClient:
 
 		Re-authenticates once on a 401 before giving up.
 		"""
+		if self.mock:
+			return _mock_response(method, endpoint, json_body)
+
 		url = f"{self.base_url}/{endpoint.lstrip('/')}"
 		headers = {
 			"authorization": self.get_access_token(),

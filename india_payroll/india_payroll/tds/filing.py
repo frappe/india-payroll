@@ -21,13 +21,13 @@ import requests
 from frappe import _
 from frappe.utils import flt, now_datetime
 from frappe.utils.file_manager import save_file
+from frappe.utils.scheduler import is_scheduler_inactive
 
 from india_payroll.india_payroll.tds.csi import fetch_csi, total_deposited
 from india_payroll.india_payroll.tds.sandbox_client import SandboxTDSClient
 from india_payroll.india_payroll.tds.sheet_json import build_sheet_json
 from india_payroll.india_payroll.tds.validators import normalize_financial_year
 
-EFILE_ENTITY = "in.co.sandbox.tds.compliance.e-file.request"
 RECONCILIATION_TOLERANCE = 10.0  # rupees
 
 # step -> (label, in-progress status, done status, default endpoint)
@@ -36,6 +36,16 @@ STEPS = {
 	"generate_txt": ("Generate TXT", "Generating TXT", "TXT Generated", "tds/reports/txt"),
 	"generate_fvu": ("Generate FVU", "Generating FVU", "FVU Generated", "tds/compliance/fvu"),
 	"e_file": ("E-File", "Filing", "Filed", "tds/compliance/e-file"),
+}
+
+# Every Sandbox request body must declare its "@entity" (the request type). This is
+# required — without it Sandbox rejects the request as malformed ("does not match any
+# saved example" in the test env; a 4xx in production).
+STEP_ENTITY = {
+	"validate": "in.co.sandbox.tds.analytics.potential_notice.request",
+	"generate_txt": "in.co.sandbox.tds.reports.txt.request",
+	"generate_fvu": "in.co.sandbox.tds.compliance.fvu.request",
+	"e_file": "in.co.sandbox.tds.compliance.e-file.request",
 }
 LABEL_TO_STEP = {label: step for step, (label, *_rest) in STEPS.items()}
 IN_PROGRESS_STATUSES = [v[1] for v in STEPS.values()]
@@ -46,11 +56,25 @@ def endpoint_for(step: str) -> str:
 
 
 # ------------------------------------------------------------------ enqueue
-def enqueue_step(docname: str, step: str) -> str:
-	"""Validate preconditions and enqueue a filing step. Returns the RQ job id."""
+def enqueue_step(docname: str, step: str) -> str | None:
+	"""Validate preconditions and enqueue a filing step. Returns the RQ job id, if available."""
 	doc = frappe.get_doc("TDS Return", docname)
 	doc.check_permission("write")
 	_check_precondition(doc, step)
+
+	# The filing pipeline is driven asynchronously: each step runs as a background job and the
+	# scheduled poller (poll_open_jobs) advances it to the next status. If the scheduler is
+	# inactive, the poller never runs and the return would stall mid-step — so bail out early
+	# with a clear message instead of queueing a job that can't progress.
+	if is_scheduler_inactive(verbose=False):
+		frappe.msgprint(
+			_("The background scheduler is disabled, so {0} cannot run. Enable it and try again.").format(
+				STEPS[step][0]
+			),
+			title=_("Scheduler Disabled"),
+			indicator="red",
+		)
+		return
 
 	job = frappe.enqueue(
 		run_step,
@@ -66,10 +90,23 @@ def enqueue_step(docname: str, step: str) -> str:
 		),
 		alert=True,
 	)
-	return job.id
+	# `enqueue_after_commit` defers the job until the transaction commits, so `enqueue` returns
+	# None here — guard against dereferencing it (the id is not consumed by the caller anyway).
+	return job.id if job else None
 
 
 def _check_precondition(doc, step: str) -> None:
+	# A previous step's job is still in flight (submitted, but the poller hasn't advanced it
+	# yet). Block starting the next step with a message that points at the async wait, rather
+	# than the misleading "generate <artifact> first" (the artifact only appears post-poll).
+	if doc.filing_status in IN_PROGRESS_STATUSES:
+		frappe.throw(
+			_(
+				"'{0}' is still in progress. It runs in the background and its status updates when "
+				"the poller runs (every few minutes) — wait for it to finish before this step."
+			).format(doc.filing_status)
+		)
+
 	if step == "validate":
 		if not doc.deductees:
 			frappe.throw(_("Add deductee rows (use 'Fetch from Payroll') before validating."))
@@ -111,12 +148,19 @@ def run_step(docname: str, step: str) -> None:
 		doc.set_status("Failed", save=False)
 		doc.save(ignore_permissions=True)
 		frappe.db.commit()
-		frappe.log_error(title=f"TDS {label} failed for {docname}")
+		# Pass an explicit traceback: frappe.log_error() otherwise builds one via
+		# get_traceback(with_context=True), which raises on Python 3.14 and would mask the
+		# real failure. with_context=False uses the plain stdlib traceback.
+		frappe.log_error(
+			title=f"TDS {label} failed for {docname}",
+			message=frappe.get_traceback(with_context=False),
+		)
 		raise
 
 
-def _identity(doc) -> dict:
+def _identity(doc, step: str) -> dict:
 	return {
+		"@entity": STEP_ENTITY[step],
 		"tan": doc.tan,
 		"financial_year": normalize_financial_year(doc.financial_year),
 		"quarter": doc.quarter,
@@ -143,7 +187,7 @@ def _submit_validate(doc, client: SandboxTDSClient) -> None:
 	resp = client.request(
 		"POST",
 		endpoint_for("validate"),
-		json_body=_identity(doc),
+		json_body=_identity(doc, "validate"),
 		reference_doctype="TDS Return",
 		reference_name=doc.name,
 	)
@@ -160,7 +204,7 @@ def _submit_validate(doc, client: SandboxTDSClient) -> None:
 
 def _submit_txt(doc, client: SandboxTDSClient) -> None:
 	sheet = build_sheet_json(doc)
-	body = _identity(doc)
+	body = _identity(doc, "generate_txt")
 	if doc.return_type == "Revised" and doc.previous_receipt_number:
 		body["previous_receipt_number"] = doc.previous_receipt_number
 	resp = client.request(
@@ -192,7 +236,7 @@ def _submit_fvu(doc, client: SandboxTDSClient) -> None:
 	resp = client.request(
 		"POST",
 		endpoint_for("generate_fvu"),
-		json_body={**_identity(doc), "txt_file_base64": txt_b64, "csi_file_base64": csi_b64},
+		json_body={**_identity(doc, "generate_fvu"), "txt_file_base64": txt_b64, "csi_file_base64": csi_b64},
 		reference_doctype="TDS Return",
 		reference_name=doc.name,
 	)
@@ -207,7 +251,7 @@ def _submit_efile(doc, client: SandboxTDSClient) -> None:
 	resp = client.request(
 		"POST",
 		endpoint_for("e_file"),
-		json_body={**_identity(doc), "entity": EFILE_ENTITY},
+		json_body=_identity(doc, "e_file"),
 		reference_doctype="TDS Return",
 		reference_name=doc.name,
 	)
@@ -346,7 +390,10 @@ def _attach(doc, fieldname: str, filename: str, content: bytes) -> None:
 
 def _read_attachment(file_url: str) -> bytes:
 	file_doc = frappe.get_doc("File", {"file_url": file_url})
-	return file_doc.get_content()
+	content = file_doc.get_content()
+	# get_content() returns str for text files (e.g. the pipe-delimited TDS .txt); callers
+	# (base64 encoding, zip writing of the upload) need bytes.
+	return content.encode() if isinstance(content, str) else content
 
 
 def _build_fvu_zip(doc) -> bytes:
