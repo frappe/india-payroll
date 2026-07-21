@@ -12,6 +12,16 @@ app_license = "gpl-3.0"
 
 required_apps = ["frappe/hrms"]
 
+# India Payroll is a companion app for Frappe HR, so it doesn't take its own apps-screen icon.
+# Instead it pins its workspace into HRMS's workspace dock (rail). Who sees it is controlled by
+# the workspace's own Roles table.
+add_to_workspace_dock = [
+	{
+		"app": "hrms",
+		"workspace": "India Payroll",
+	}
+]
+
 # Each item in the list will be shown as an app in the apps page
 # add_to_apps_screen = [
 # 	{
@@ -19,7 +29,6 @@ required_apps = ["frappe/hrms"]
 # 		"logo": "/assets/india_payroll/logo.png",
 # 		"title": "India Payroll",
 # 		"route": "/india_payroll",
-# 		"has_permission": "india_payroll.api.permission.has_app_permission"
 # 	}
 # ]
 
