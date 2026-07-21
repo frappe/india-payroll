@@ -18,7 +18,7 @@ add_app_to_dock = [
 	{
 		"app": "hrms",
 		"workspace": "India Payroll",
-		"has_permission": "india_payroll.api.permission.has_app_permission"
+		"has_permission": "india_payroll.api.permission.has_app_permission",
 	}
 ]
 
