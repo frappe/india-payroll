@@ -145,9 +145,8 @@ class SandboxTDSClient:
 			frappe.throw(_("Sandbox authentication failed: no access token returned."))
 
 		# Persist the token on the (Single) Payroll Settings for reuse.
-		frappe.db.set_value(
+		frappe.db.set_single_value(
 			"Payroll Settings",
-			None,
 			{
 				"tds_access_token": token,
 				"tds_token_expiry": add_to_date(now_datetime(), hours=TOKEN_TTL_HOURS),
