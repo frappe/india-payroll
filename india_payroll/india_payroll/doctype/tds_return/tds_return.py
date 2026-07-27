@@ -149,6 +149,7 @@ class TDSReturn(Document):
 	def set_status(self, status: str, save: bool = True) -> None:
 		self.db_set("filing_status", status)
 		if save:
+			# nosemgrep: commit is required to ensure that the status change is persisted before any subsequent actions are taken.
 			frappe.db.commit()
 
 	def get_open_job(self) -> dict | None:
