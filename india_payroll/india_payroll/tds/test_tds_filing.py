@@ -1,10 +1,13 @@
 # Copyright (c) 2026, Frappe Technologies Pvt. Ltd. and contributors
 # License: GNU General Public License v3. See license.txt
 
+from unittest.mock import patch
+
 import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import getdate
 
+from india_payroll.india_payroll.tds import filing
 from india_payroll.india_payroll.tds.data_assembly import quarter_range_from_start
 from india_payroll.india_payroll.tds.sandbox_client import mask_sensitive
 from india_payroll.india_payroll.tds.validators import (
@@ -116,3 +119,36 @@ class TestQuarterDateRange(FrappeTestCase):
 			s, e = quarter_range_from_start("2024-04-01", quarter)
 			self.assertEqual(s, getdate(start), f"{quarter} start")
 			self.assertEqual(e, getdate(end), f"{quarter} end")
+
+
+class _FakeDoc:
+	def __init__(self, **fields):
+		self.name = "TDS-RET-TEST"
+		self._fields = fields
+
+	def get(self, key):
+		return self._fields.get(key)
+
+	def db_set(self, key, value):
+		self._fields[key] = value
+
+
+class TestTxtRegenerationClears(FrappeTestCase):
+	def test_result_txt_clears_stale_downstream_artifacts(self):
+		doc = _FakeDoc(
+			txt_file="/old.txt",
+			csi_file="/x.csi",
+			fvu_file="/x.fvu",
+			form_27a="/x-27A.pdf",
+		)
+		with (
+			patch.object(filing, "_attach") as attach,
+			patch.object(filing, "_download_result", return_value=b"NEW-TXT"),
+		):
+			filing._result_txt(doc, {"txt_base64": ""})
+
+		attach.assert_called_once()
+		self.assertEqual(attach.call_args[0][1], "txt_file")
+		self.assertIsNone(doc.get("fvu_file"))
+		self.assertIsNone(doc.get("csi_file"))
+		self.assertIsNone(doc.get("form_27a"))

@@ -255,7 +255,7 @@ def get_custom_fields():
 			{
 				"fieldname": "tds_api_key",
 				"label": "Sandbox API Key",
-				"fieldtype": "Data",
+				"fieldtype": "Password",
 				"insert_after": "tds_sandbox_mode",
 				"depends_on": "eval:doc.enable_tds_filing",
 				"translatable": 0,

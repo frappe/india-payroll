@@ -339,6 +339,9 @@ def _result_validate(doc, data: dict) -> None:
 
 def _result_txt(doc, data: dict) -> None:
 	_attach(doc, "txt_file", f"{doc.name}.txt", _download_result(data, "txt"))
+	for stale in ("fvu_file", "csi_file", "form_27a"):
+		if doc.get(stale):
+			doc.db_set(stale, None)
 
 
 def _result_fvu(doc, data: dict) -> None:

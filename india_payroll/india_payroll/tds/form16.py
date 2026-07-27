@@ -28,6 +28,7 @@ def endpoint(part: str) -> str:
 def create_forms_for_return(return_name: str) -> int:
 	"""Create a Form 16 record for each employee in a filed Q4 TDS Return."""
 	ret = frappe.get_doc("TDS Return", return_name)
+	ret.check_permission("write")
 	if ret.quarter != "Q4":
 		frappe.throw(_("Form 16 is generated from the Q4 return (which carries the annual annexure)."))
 
@@ -51,7 +52,7 @@ def create_forms_for_return(return_name: str) -> int:
 				"total_tax_deducted": flt(row["total_tax"]),
 			}
 		)
-		doc.insert(ignore_permissions=True)
+		doc.insert()
 		created += 1
 	return created
 

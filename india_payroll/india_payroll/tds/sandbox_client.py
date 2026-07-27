@@ -100,7 +100,7 @@ class SandboxTDSClient:
 		if not self.settings.get("enable_tds_filing"):
 			frappe.throw(_("TDS Return Filing is not enabled in Payroll Settings."))
 
-		self.api_key = self.settings.get("tds_api_key")
+		self.api_key = self.settings.get_password("tds_api_key", raise_exception=False)
 		self.api_secret = self.settings.get_password("tds_api_secret", raise_exception=False)
 		self.api_version = self.settings.get("tds_api_version") or DEFAULT_API_VERSION
 		self.sandbox_mode = cint(self.settings.get("tds_sandbox_mode"))
