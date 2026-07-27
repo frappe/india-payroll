@@ -57,13 +57,13 @@ def create_forms_for_return(return_name: str) -> int:
 
 
 # ------------------------------------------------------------------ enqueue
-def enqueue_part_b(docname: str) -> str:
+def enqueue_part_b(docname: str) -> str | None:
 	job = frappe.enqueue(run_part_b, queue="long", timeout=600, enqueue_after_commit=True, docname=docname)
 	frappe.msgprint(_("Form 16 Part B generation started."), alert=True)
-	return job.id
+	return job.id if job else None
 
 
-def enqueue_part_a(docname: str) -> str:
+def enqueue_part_a(docname: str) -> str | None:
 	doc = frappe.get_doc("Form 16", docname)
 	if not (
 		doc.tds_return
@@ -72,7 +72,7 @@ def enqueue_part_a(docname: str) -> str:
 		frappe.throw(_("Part A can only be requested after the linked Q4 return is filed."))
 	job = frappe.enqueue(run_part_a, queue="long", timeout=600, enqueue_after_commit=True, docname=docname)
 	frappe.msgprint(_("Form 16 Part A requested from TRACES."), alert=True)
-	return job.id
+	return job.id if job else None
 
 
 # -------------------------------------------------------------------- submit
