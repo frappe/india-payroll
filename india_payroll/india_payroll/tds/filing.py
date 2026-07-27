@@ -134,7 +134,7 @@ def _check_reconciliation(doc) -> None:
 		)
 
 
-# -------------------------------------------------------------------- run
+# nosemgrep: commit is required to ensure that the status change is persisted before any subsequent actions are taken.
 def run_step(docname: str, step: str) -> None:
 	doc = frappe.get_doc("TDS Return", docname)
 	client = SandboxTDSClient()
@@ -148,9 +148,6 @@ def run_step(docname: str, step: str) -> None:
 		doc.set_status("Failed", save=False)
 		doc.save(ignore_permissions=True)
 		frappe.db.commit()
-		# Pass an explicit traceback: frappe.log_error() otherwise builds one via
-		# get_traceback(with_context=True), which raises on Python 3.14 and would mask the
-		# real failure. with_context=False uses the plain stdlib traceback.
 		frappe.log_error(
 			title=f"TDS {label} failed for {docname}",
 			message=frappe.get_traceback(with_context=False),
@@ -272,7 +269,7 @@ _SUBMIT = {
 }
 
 
-# ------------------------------------------------------------------ polling
+# nosemgrep: commit is required to ensure that the status change is persisted before any subsequent actions are taken.
 def poll_open_jobs() -> None:
 	"""Scheduled: advance every TDS Return that has an open Sandbox job."""
 	names = frappe.get_all(

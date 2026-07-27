@@ -120,7 +120,7 @@ def run_part_a(docname: str) -> None:
 	)
 
 
-# ------------------------------------------------------------------ polling
+# nosemgrep: commit is required to ensure that the status change is persisted before any subsequent actions are taken.
 def poll_form16_jobs() -> None:
 	"""Scheduled: download Part A / Part B PDFs once Sandbox jobs complete."""
 	for part in ("a", "b"):
