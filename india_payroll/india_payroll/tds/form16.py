@@ -121,7 +121,6 @@ def run_part_a(docname: str) -> None:
 	)
 
 
-# nosemgrep: commit is required to ensure that the status change is persisted before any subsequent actions are taken.
 def poll_form16_jobs() -> None:
 	"""Scheduled: download Part A / Part B PDFs once Sandbox jobs complete."""
 	for part in ("a", "b"):
@@ -135,7 +134,7 @@ def poll_form16_jobs() -> None:
 		for name in names:
 			try:
 				_poll_one(name, part)
-				frappe.db.commit()
+				frappe.db.commit()  # nosemgrep: commit each Form 16 so one item's failure and rollback doesn't discard earlier iterations' progress
 			except Exception:
 				frappe.db.rollback()
 				frappe.log_error(title=f"Form 16 Part {part.upper()} poll failed for {name}")
