@@ -147,23 +147,15 @@ before_uninstall = "india_payroll.uninstall.before_uninstall"
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
-# 	"all": [
-# 		"india_payroll.tasks.all"
-# 	],
-# 	"daily": [
-# 		"india_payroll.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"india_payroll.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"india_payroll.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"india_payroll.tasks.monthly"
-# 	],
-# }
+scheduler_events = {
+	"cron": {
+		# Poll open Sandbox filing jobs every 5 minutes.
+		"*/5 * * * *": [
+			"india_payroll.india_payroll.tds.filing.poll_open_jobs",
+			"india_payroll.india_payroll.tds.form16.poll_form16_jobs",
+		],
+	},
+}
 
 # Testing
 # -------
@@ -199,6 +191,12 @@ before_uninstall = "india_payroll.uninstall.before_uninstall"
 doc_events = {
 	"Salary Structure Assignment": {
 		"validate": "india_payroll.india_payroll.professional_tax.validate_employment_state",
+	},
+	"Payroll Settings": {
+		"validate": "india_payroll.india_payroll.tds.settings.clear_token_cache_on_change",
+	},
+	"Company": {
+		"validate": "india_payroll.india_payroll.tds.settings.validate_deductor_details",
 	},
 }
 #

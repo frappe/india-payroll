@@ -1,0 +1,220 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "format:F16-{financial_year}-{employee}",
+ "creation": "2026-06-26 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "employee",
+  "employee_name",
+  "pan",
+  "column_break_head",
+  "company",
+  "tan",
+  "financial_year",
+  "tds_return",
+  "summary_section",
+  "gross_salary",
+  "total_taxable_income",
+  "column_break_sum",
+  "total_tax_deducted",
+  "part_a_section",
+  "part_a_status",
+  "traces_request_id",
+  "part_a_job_id",
+  "part_a_file",
+  "part_b_section",
+  "part_b_status",
+  "part_b_job_id",
+  "part_b_file"
+ ],
+ "fields": [
+  {
+   "fieldname": "employee",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Employee",
+   "options": "Employee",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "employee.employee_name",
+   "fieldname": "employee_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Employee Name",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "employee.pan_number",
+   "fetch_if_empty": 1,
+   "fieldname": "pan",
+   "fieldtype": "Data",
+   "label": "PAN"
+  },
+  {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "company.tan",
+   "fetch_if_empty": 1,
+   "fieldname": "tan",
+   "fieldtype": "Data",
+   "label": "TAN",
+   "read_only": 1
+  },
+  {
+   "fieldname": "financial_year",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Financial Year",
+   "options": "Fiscal Year",
+   "reqd": 1
+  },
+  {
+   "fieldname": "tds_return",
+   "fieldtype": "Link",
+   "label": "TDS Return (Q4)",
+   "options": "TDS Return"
+  },
+  {
+   "fieldname": "summary_section",
+   "fieldtype": "Section Break",
+   "label": "Salary Summary"
+  },
+  {
+   "fieldname": "gross_salary",
+   "fieldtype": "Currency",
+   "label": "Gross Salary",
+   "read_only": 1,
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "total_taxable_income",
+   "fieldtype": "Currency",
+   "label": "Total Taxable Income",
+   "read_only": 1,
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "column_break_sum",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "total_tax_deducted",
+   "fieldtype": "Currency",
+   "label": "Total Tax Deducted",
+   "read_only": 1,
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "part_a_section",
+   "fieldtype": "Section Break",
+   "label": "Part A (TRACES)"
+  },
+  {
+   "default": "Pending",
+   "fieldname": "part_a_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Part A Status",
+   "options": "Pending\nRequested\nAvailable\nFailed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "traces_request_id",
+   "fieldtype": "Data",
+   "label": "TRACES Request ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "part_a_job_id",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Part A Job ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "part_a_file",
+   "fieldtype": "Attach",
+   "label": "Part A PDF",
+   "read_only": 1
+  },
+  {
+   "fieldname": "part_b_section",
+   "fieldtype": "Section Break",
+   "label": "Part B"
+  },
+  {
+   "default": "Pending",
+   "fieldname": "part_b_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Part B Status",
+   "options": "Pending\nRequested\nAvailable\nFailed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "part_b_job_id",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Part B Job ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "part_b_file",
+   "fieldtype": "Attach",
+   "label": "Part B PDF",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-06-26 00:00:00.000000",
+ "module": "India Payroll",
+ "name": "Form 16",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Payroll Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
