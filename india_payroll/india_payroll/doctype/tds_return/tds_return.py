@@ -146,11 +146,10 @@ class TDSReturn(Document):
 		if save:
 			self.save(ignore_permissions=True)
 
-	# nosemgrep: commit is required to ensure that the status change is persisted before any subsequent actions are taken.
 	def set_status(self, status: str, save: bool = True) -> None:
 		self.db_set("filing_status", status)
 		if save:
-			frappe.db.commit()
+			frappe.db.commit()  # nosemgrep: commit is required to ensure that the status change is persisted before any subsequent actions are taken.
 
 	def get_open_job(self) -> dict | None:
 		"""Return the most recent action that has an open (incomplete) job, if any."""
