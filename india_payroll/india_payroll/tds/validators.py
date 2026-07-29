@@ -8,6 +8,16 @@ from frappe import _
 PAN_PATTERN = re.compile(r"^[A-Z]{5}[0-9]{4}[A-Z]$")
 TAN_PATTERN = re.compile(r"^[A-Z]{4}[0-9]{5}[A-Z]$")
 
+# Placeholders NSDL accepts in a deductee PAN column when a real PAN is unavailable.
+PAN_PLACEHOLDERS = frozenset({"PANNOTAVBL", "PANAPPLIED", "PANINVALID"})
+
+# The Income-tax Act 2025 renumbered the quarterly TDS/TCS statements with effect
+# from 1 April 2026: 24Q -> 138, 26Q -> 140, 27Q -> 144, 27EQ -> 143. Sandbox's
+# reports/FVU/e-file endpoints take the new codes plus a "TY YYYY-YY" tax year;
+# the analytics endpoint still documents the old codes with "FY YYYY-YY".
+NEW_ACT_FIRST_YEAR = 2026
+FORM_CODES = {"24Q": "138", "26Q": "140", "27Q": "144", "27EQ": "143"}
+
 # Quarter -> (month range within the Indian financial year Apr-Mar)
 QUARTERS = ("Q1", "Q2", "Q3", "Q4")
 QUARTER_MONTHS = {
@@ -40,15 +50,43 @@ def validate_tan(tan: str | None, label: str = "TAN") -> str:
 	return tan
 
 
+def is_valid_deductee_pan(pan: str | None) -> bool:
+	pan = (pan or "").strip().upper()
+	return is_valid_pan(pan) or pan in PAN_PLACEHOLDERS
+
+
+def financial_year_start(fy: str) -> int:
+	"""Return the starting calendar year of a financial-year label."""
+	digits = re.findall(r"\d{4}", (fy or "").strip())
+	if not digits:
+		frappe.throw(_("Could not parse financial year from '{0}'.").format(fy))
+	return int(digits[0])
+
+
+def _year_label(prefix: str, fy: str) -> str:
+	start = financial_year_start(fy)
+	return f"{prefix} {start}-{str((start + 1) % 100).zfill(2)}"
+
+
 def normalize_financial_year(fy: str) -> str:
 	"""Return a Sandbox-style financial year label, e.g. 'FY 2024-25'.
 
 	Accepts '2024-25', '2024-2025', 'FY 2024-25' and ERPNext fiscal-year names.
 	"""
-	fy = (fy or "").strip()
-	digits = re.findall(r"\d{4}", fy)
-	if not digits:
-		frappe.throw(_("Could not parse financial year from '{0}'.").format(fy))
-	start = int(digits[0])
-	end_two = str((start + 1) % 100).zfill(2)
-	return f"FY {start}-{end_two}"
+	return _year_label("FY", fy)
+
+
+def normalize_tax_year(fy: str) -> str:
+	"""Return a Sandbox-style tax year label, e.g. 'TY 2026-27'."""
+	return _year_label("TY", fy)
+
+
+def uses_new_act(fy: str) -> bool:
+	return financial_year_start(fy) >= NEW_ACT_FIRST_YEAR
+
+
+def form_code(form_type: str, fy: str) -> str:
+	"""Return the form identifier Sandbox expects for the given period."""
+	if uses_new_act(fy):
+		return FORM_CODES.get(form_type, form_type)
+	return form_type
