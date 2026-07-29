@@ -276,6 +276,71 @@ class TestPollGuards(FrappeTestCase):
 			filing.poll_return("TDS-RET-DRAFT")
 
 
+class _RecordingClient:
+	"""Captures what upload_to_presigned_url was called with."""
+
+	def __init__(self, status=200):
+		self.status = status
+		self.uploads = []
+
+	def upload_to_presigned_url(self, url, content, content_type, **kwargs):
+		self.uploads.append((url, content, content_type, kwargs))
+		return self.status
+
+
+class TestPresignedUpload(FrappeTestCase):
+	def test_s3_error_body_is_surfaced(self):
+		# A 403 SignatureDoesNotMatch must raise with the S3 body, not log as "uploaded".
+		client = SandboxTDSClient.__new__(SandboxTDSClient)
+		client.mock = 0
+		client.api_secret = None
+		client._session = _FakeSession(403, "<Error><Code>SignatureDoesNotMatch</Code></Error>")
+		logged = {}
+		with patch.object(SandboxTDSClient, "_log_request", lambda self, **kw: logged.update(kw)):
+			with self.assertRaises(frappe.ValidationError) as ctx:
+				client.upload_to_presigned_url("https://s3.example/upload?sig=x", b"{}", "application/json")
+		self.assertIn("SignatureDoesNotMatch", str(ctx.exception))
+		self.assertIsNotNone(logged["error"])
+		self.assertEqual(logged["output"]["status_code"], 403)
+
+	def test_success_logs_real_status_and_etag(self):
+		client = SandboxTDSClient.__new__(SandboxTDSClient)
+		client.mock = 0
+		client.api_secret = None
+		client._session = _FakeSession(200, "", {"ETag": '"abc123"'})
+		logged = {}
+		with patch.object(SandboxTDSClient, "_log_request", lambda self, **kw: logged.update(kw)):
+			status = client.upload_to_presigned_url(
+				"https://s3.example/upload?sig=x", b"{}", "application/json"
+			)
+		self.assertEqual(status, 200)
+		self.assertIsNone(logged["error"])
+		self.assertEqual(logged["output"]["etag"], '"abc123"')
+
+	def test_long_presigned_url_does_not_break_the_log_row(self):
+		# request_description is Data/varchar(140); overflowing it used to drop the row.
+		long_url = "https://bucket.s3.ap-south-1.amazonaws.com/" + "k" * 400
+		desc = f"PUT {long_url}"[:140]
+		self.assertEqual(len(desc), 140)
+
+
+class _FakeSession:
+	def __init__(self, status_code, text, headers=None):
+		self._status_code = status_code
+		self._text = text
+		self._headers = headers or {}
+
+	def put(self, url, data=None, headers=None, timeout=None):
+		return frappe._dict(status_code=self._status_code, text=self._text, headers=self._headers)
+
+
+class TestStuckAtCreated(FrappeTestCase):
+	def test_created_has_a_shorter_deadline_than_the_overall_timeout(self):
+		# A job awaiting its payload should fail fast, not burn the full 180 min.
+		self.assertLess(filing.MAX_CREATED_MINUTES, filing.MAX_JOB_AGE_MINUTES)
+		self.assertIn("created", filing.PENDING_STATUSES)
+
+
 class TestValidationIssues(FrappeTestCase):
 	def test_report_json_list_becomes_issue_rows(self):
 		content = b'[{"message": "PAN mismatch for row 3"}]'
