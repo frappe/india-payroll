@@ -89,7 +89,16 @@ PENDING_STATUSES = frozenset({"created", "queued", "in_progress", "processing", 
 SUCCESS_STATUSES = frozenset({"succeeded", "completed", "success"})
 FAILURE_STATUSES = frozenset({"failed", "error", "rejected", "cancelled", "expired", "timed_out"})
 
-TERMINAL_ACTION_STATUSES = SUCCESS_STATUSES | FAILURE_STATUSES
+# Local outcomes that close a filing-log row without Sandbox reaching a verdict.
+LOCAL_CLOSED_STATUSES = frozenset({"skipped", "abandoned"})
+
+TERMINAL_ACTION_STATUSES = SUCCESS_STATUSES | FAILURE_STATUSES | LOCAL_CLOSED_STATUSES
+
+# Set when the deductor deliberately bypasses Sandbox's potential-notice check.
+SKIPPED_STATUS = "Validation Skipped"
+
+# Filing statuses from which the TXT can be generated.
+TXT_READY_STATUSES = ("Validated", SKIPPED_STATUS, "TXT Generated", "FVU Generated")
 
 
 def endpoint_for(step: str) -> str:
@@ -161,14 +170,58 @@ def _check_precondition(doc, step: str) -> None:
 		_check_deductee_pans(doc)
 		_check_reconciliation(doc)
 	elif step == "generate_txt":
-		if doc.filing_status not in ("Validated", "TXT Generated", "FVU Generated"):
-			frappe.throw(_("Validate the return before generating the TXT file."))
+		if doc.filing_status not in TXT_READY_STATUSES:
+			frappe.throw(
+				_("Validate the return (or explicitly skip validation) before generating the TXT file.")
+			)
 	elif step == "generate_fvu":
 		if not doc.txt_file:
 			frappe.throw(_("Generate the TXT file before generating the FVU."))
 	elif step == "e_file":
 		if not doc.fvu_file:
 			frappe.throw(_("Generate the FVU file before e-filing."))
+
+
+def skip_validation(docname: str, reason: str) -> None:
+	"""Bypass Sandbox's potential-notice check and move straight to TXT generation.
+
+	Sandbox's analytics endpoint has no representation for the Income-tax Act 2025
+	forms, so a new-Act return can create a job there that never completes. This is
+	the deliberate, recorded escape hatch — it skips Sandbox's advisory check only,
+	never the local pre-flight gates, and every use is stamped into the filing log.
+	"""
+	doc = frappe.get_doc("TDS Return", docname)
+	doc.check_permission("write")
+
+	if doc.docstatus != 0:
+		frappe.throw(_("This return has already been submitted."))
+
+	reason = (reason or "").strip()
+	if not reason:
+		frappe.throw(_("Give a reason for skipping validation — it is recorded on the return."))
+
+	validating = STEP_SPECS["validate"]["in_progress"]
+	if doc.filing_status in IN_PROGRESS_STATUSES and doc.filing_status != validating:
+		frappe.throw(
+			_("'{0}' is still in progress. Wait for it to finish before skipping validation.").format(
+				doc.filing_status
+			)
+		)
+
+	# Skipping Sandbox's check must not skip ours.
+	_check_deductee_pans(doc)
+	_check_reconciliation(doc)
+
+	# Close any in-flight validate job so the poller stops chasing it.
+	job = doc.get_open_job()
+	if job and LABEL_TO_STEP.get(job["request_type"]) == "validate":
+		_update_action(doc, job["row"], "abandoned")
+
+	note = _("Validation skipped by {0}. Reason: {1}").format(frappe.session.user, reason)
+	doc.validation_issues = json.dumps([{"message": note}], indent=2)
+	doc.add_action(STEP_SPECS["validate"]["label"], "skipped", message=note[:500], save=False)
+	doc.set_status(SKIPPED_STATUS, save=False)
+	doc.save(ignore_permissions=True)
 
 
 def _check_deductee_pans(doc) -> None:

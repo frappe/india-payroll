@@ -195,6 +195,12 @@ class TDSReturn(Document):
 		return enqueue_step(self.name, "validate")
 
 	@frappe.whitelist()
+	def skip_validation(self, reason: str) -> None:
+		from india_payroll.india_payroll.tds.filing import skip_validation
+
+		return skip_validation(self.name, reason)
+
+	@frappe.whitelist()
 	def generate_txt(self) -> str:
 		from india_payroll.india_payroll.tds.filing import enqueue_step
 

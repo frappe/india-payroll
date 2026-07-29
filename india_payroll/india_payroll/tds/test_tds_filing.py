@@ -341,6 +341,43 @@ class TestStuckAtCreated(FrappeTestCase):
 		self.assertIn("created", filing.PENDING_STATUSES)
 
 
+class TestSkipValidation(FrappeTestCase):
+	def test_skipped_status_unblocks_txt_generation(self):
+		self.assertIn(filing.SKIPPED_STATUS, filing.TXT_READY_STATUSES)
+		self.assertIn("Validated", filing.TXT_READY_STATUSES)
+
+	def test_skipped_status_is_not_an_in_progress_state(self):
+		# Otherwise every later step would report "still in progress".
+		self.assertNotIn(filing.SKIPPED_STATUS, filing.IN_PROGRESS_STATUSES)
+
+	def test_local_closures_end_a_filing_log_row(self):
+		# An abandoned validate job must stop the poller picking it up again.
+		for status in ("skipped", "abandoned"):
+			self.assertIn(status, filing.TERMINAL_ACTION_STATUSES)
+
+	def test_reason_is_required(self):
+		for blank in ("", "   ", None):
+			with patch.object(filing.frappe, "get_doc") as get_doc:
+				get_doc.return_value = frappe._dict(docstatus=0, check_permission=lambda perm: None)
+				self.assertRaises(frappe.ValidationError, filing.skip_validation, "TDS-RET-X", blank)
+
+	def test_submitted_return_cannot_be_skipped(self):
+		with patch.object(filing.frappe, "get_doc") as get_doc:
+			get_doc.return_value = frappe._dict(docstatus=1, check_permission=lambda perm: None)
+			self.assertRaises(frappe.ValidationError, filing.skip_validation, "TDS-RET-X", "because")
+
+	def test_cannot_skip_while_another_step_runs(self):
+		doc = frappe._dict(
+			docstatus=0,
+			check_permission=lambda perm: None,
+			filing_status="Generating TXT",
+		)
+		with patch.object(filing.frappe, "get_doc", return_value=doc):
+			with self.assertRaises(frappe.ValidationError) as ctx:
+				filing.skip_validation("TDS-RET-X", "because")
+		self.assertIn("Generating TXT", str(ctx.exception))
+
+
 class TestValidationIssues(FrappeTestCase):
 	def test_report_json_list_becomes_issue_rows(self):
 		content = b'[{"message": "PAN mismatch for row 3"}]'

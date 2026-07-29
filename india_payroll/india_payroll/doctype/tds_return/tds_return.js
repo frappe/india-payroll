@@ -1,6 +1,16 @@
 // Copyright (c) 2026, Frappe Technologies Pvt. Ltd. and contributors
 // For license information, please see license.txt
 
+// Statuses at or past which validation is no longer outstanding.
+const VALIDATION_SETTLED = [
+	"Validated",
+	"Validation Skipped",
+	"TXT Generated",
+	"FVU Generated",
+	"Filed",
+	"Accepted",
+];
+
 frappe.ui.form.on("TDS Return", {
 	refresh(frm) {
 		if (frm.is_new()) return;
@@ -35,6 +45,14 @@ frappe.ui.form.on("TDS Return", {
 			step(__("2. Generate TXT"), "generate_txt");
 			step(__("3. Generate FVU"), "generate_fvu");
 			step(__("4. E-File"), "file_return");
+
+			if (!VALIDATION_SETTLED.includes(status)) {
+				frm.add_custom_button(
+					__("Skip Validation"),
+					() => prompt_skip_validation(frm),
+					__("File Return")
+				);
+			}
 		}
 
 		if (["Filed", "Accepted"].includes(status) && frm.doc.quarter === "Q4") {
@@ -66,6 +84,37 @@ frappe.ui.form.on("TDS Return", {
 		render_validation_issues(frm);
 	},
 });
+
+function prompt_skip_validation(frm) {
+	frappe.prompt(
+		[
+			{
+				fieldname: "warning",
+				fieldtype: "HTML",
+				options: `<div class="alert alert-warning">${__(
+					"This skips Sandbox's potential-notice check only. Reconciliation and PAN checks still run, but the return will be filed without Sandbox screening it for issues that could trigger a notice. The reason below is recorded on the return."
+				)}</div>`,
+			},
+			{
+				fieldname: "reason",
+				fieldtype: "Small Text",
+				label: __("Reason for skipping"),
+				reqd: 1,
+			},
+		],
+		(values) => {
+			frm.call("skip_validation", { reason: values.reason }).then(() => {
+				frm.reload_doc();
+				frappe.show_alert({
+					message: __("Validation skipped. You can now generate the TXT."),
+					indicator: "orange",
+				});
+			});
+		},
+		__("Skip Sandbox Validation"),
+		__("Skip Validation")
+	);
+}
 
 function render_validation_issues(frm) {
 	if (!frm.doc.validation_issues) return;

@@ -8,6 +8,7 @@ Auth flow (Sandbox):
 """
 
 import base64
+import hashlib
 import io
 import json
 import zipfile
@@ -376,7 +377,13 @@ class SandboxTDSClient:
 				url=presigned_url,
 				method="PUT",
 				request_headers={"Content-Type": content_type},
-				request_body={"bytes": len(content), "content_type": content_type},
+				# S3 returns the body's MD5 as the ETag for a single-part PUT, so logging it
+				# here lets you confirm the stored object is byte-identical to what was sent.
+				request_body={
+					"bytes": len(content),
+					"content_type": content_type,
+					"md5": hashlib.md5(content).hexdigest(),
+				},
 				output={"status_code": 200, "status": "uploaded (mock)"},
 				error=None,
 				reference_doctype=reference_doctype,
@@ -417,7 +424,13 @@ class SandboxTDSClient:
 				url=presigned_url.split("?")[0],
 				method="PUT",
 				request_headers={"Content-Type": content_type},
-				request_body={"bytes": len(content), "content_type": content_type},
+				# S3 returns the body's MD5 as the ETag for a single-part PUT, so logging it
+				# here lets you confirm the stored object is byte-identical to what was sent.
+				request_body={
+					"bytes": len(content),
+					"content_type": content_type,
+					"md5": hashlib.md5(content).hexdigest(),
+				},
 				output=output,
 				error=error,
 				reference_doctype=reference_doctype,
