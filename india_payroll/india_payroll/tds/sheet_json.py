@@ -11,14 +11,26 @@ import frappe
 from frappe.utils import flt, formatdate
 
 from india_payroll.india_payroll.tds.csi import build_challan_section
-from india_payroll.india_payroll.tds.validators import normalize_financial_year
+from india_payroll.india_payroll.tds.validators import (
+	form_code,
+	normalize_financial_year,
+	normalize_tax_year,
+	uses_new_act,
+)
+
+
+def _period(doc) -> dict:
+	"""Match the period vocabulary the consuming endpoint uses for this year."""
+	if uses_new_act(doc.financial_year):
+		return {"tax_year": normalize_tax_year(doc.financial_year)}
+	return {"financial_year": normalize_financial_year(doc.financial_year)}
 
 
 def build_sheet_json(doc) -> dict:
 	"""Return the Sheet JSON dict for the given TDS Return document."""
 	return {
-		"form": doc.form_type,
-		"financial_year": normalize_financial_year(doc.financial_year),
+		"form": form_code(doc.form_type, doc.financial_year),
+		**_period(doc),
 		"quarter": doc.quarter,
 		"return_type": "Regular" if doc.return_type == "Original" else "Correction",
 		"previous_receipt_number": doc.previous_receipt_number or None,

@@ -6,7 +6,11 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import flt, now_datetime
 
-from india_payroll.india_payroll.tds.validators import is_valid_pan, validate_pan, validate_tan
+from india_payroll.india_payroll.tds.validators import (
+	is_valid_deductee_pan,
+	validate_pan,
+	validate_tan,
+)
 
 
 class TDSReturn(Document):
@@ -102,9 +106,19 @@ class TDSReturn(Document):
 			)
 
 	def validate_deductees(self) -> None:
+		invalid = []
 		for row in self.deductees:
 			if row.pan:
 				row.pan = row.pan.strip().upper()
+			if row.pan and not is_valid_deductee_pan(row.pan):
+				invalid.append(_("Row {0}: {1}").format(row.idx, row.pan))
+
+		if invalid:
+			frappe.throw(
+				_("Invalid deductee PAN (expected format AAAAA9999A, or PANNOTAVBL if unavailable):")
+				+ "<br>"
+				+ "<br>".join(invalid)
+			)
 
 	def calculate_totals(self) -> None:
 		from india_payroll.india_payroll.tds.csi import total_deposited
@@ -153,13 +167,10 @@ class TDSReturn(Document):
 
 	def get_open_job(self) -> dict | None:
 		"""Return the most recent action that has an open (incomplete) job, if any."""
+		from india_payroll.india_payroll.tds.filing import TERMINAL_ACTION_STATUSES
+
 		for action in reversed(self.filing_actions):
-			if action.job_id and (action.status or "").lower() not in (
-				"completed",
-				"succeeded",
-				"failed",
-				"error",
-			):
+			if action.job_id and (action.status or "").lower() not in TERMINAL_ACTION_STATUSES:
 				return {
 					"request_type": action.request_type,
 					"job_id": action.job_id,

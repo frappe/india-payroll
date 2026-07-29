@@ -10,12 +10,23 @@ import frappe
 from frappe import _
 from frappe.utils import flt
 
-from india_payroll.india_payroll.tds.filing import _attach, _download_result, _parse_job
+from india_payroll.india_payroll.tds.filing import (
+	FAILURE_STATUSES,
+	SUCCESS_STATUSES,
+	_attach,
+	_data,
+	_download_result,
+	_extract_from_zip,
+)
 from india_payroll.india_payroll.tds.sandbox_client import SandboxTDSClient
 from india_payroll.india_payroll.tds.validators import normalize_financial_year
 
 PART_B_ENDPOINT = "tds/reports/form-16-part-b"
-PART_A_ENDPOINT = "tds/traces/form-16-part-a"
+# Part A comes from TRACES, whose documented contract is
+# POST /tds/compliance/traces/deductors/forms/form16 with the deductor's TRACES
+# credentials plus a challan-based security challenge. Those inputs are not
+# modelled on Form 16 yet, so the endpoint stays overridable via site_config.
+PART_A_ENDPOINT = "tds/compliance/traces/deductors/forms/form16"
 
 
 def endpoint(part: str) -> str:
@@ -92,7 +103,7 @@ def run_part_b(docname: str) -> None:
 		reference_doctype="Form 16",
 		reference_name=doc.name,
 	)
-	job_id, _url = _parse_job(resp)
+	job_id = _job_id(resp, "B")
 	doc.db_set({"part_b_job_id": job_id, "part_b_status": "Requested"})
 
 
@@ -110,15 +121,21 @@ def run_part_a(docname: str) -> None:
 		reference_doctype="Form 16",
 		reference_name=doc.name,
 	)
-	data = resp.get("data", resp) if isinstance(resp, dict) else {}
-	job_id, _url = _parse_job(resp)
+	data = _data(resp)
 	doc.db_set(
 		{
-			"part_a_job_id": job_id,
+			"part_a_job_id": _job_id(resp, "A"),
 			"traces_request_id": data.get("request_id") or data.get("traces_request_id"),
 			"part_a_status": "Requested",
 		}
 	)
+
+
+def _job_id(resp: dict, part: str) -> str:
+	job_id = _data(resp).get("job_id")
+	if not job_id:
+		frappe.throw(_("Sandbox did not return a job id for Form 16 Part {0}.").format(part))
+	return job_id
 
 
 def poll_form16_jobs() -> None:
@@ -151,17 +168,32 @@ def _poll_one(docname: str, part: str) -> None:
 		reference_doctype="Form 16",
 		reference_name=doc.name,
 	)
-	data = resp.get("data", resp) if isinstance(resp, dict) else {}
+	data = _data(resp)
 	status = str(data.get("status") or "").lower()
 
-	if status in ("created", "queued", "processing", "in_progress", "pending", ""):
-		return
-	if status in ("failed", "error", "rejected"):
+	if status in FAILURE_STATUSES:
 		doc.db_set(f"part_{part}_status", "Failed")
 		return
+	if status not in SUCCESS_STATUSES:
+		return
+
+	content = _certificate_bytes(client, data, part)
+	if content:
+		pdf = _extract_from_zip(content, ".pdf")
+		if pdf:
+			_attach(doc, f"part_{part}_file", f"{doc.name}-part-{part.upper()}.pdf", pdf)
+		else:
+			_attach(doc, f"part_{part}_file", f"{doc.name}-part-{part.upper()}.zip", content)
+	doc.db_set(f"part_{part}_status", "Available")
+
+
+def _certificate_bytes(client: SandboxTDSClient, data: dict, part: str) -> bytes | None:
+	"""TRACES returns certificates as a list of zip URLs; reports return a single file."""
+	urls = data.get("certificate_zip_urls")
+	if isinstance(urls, list) and urls:
+		return client.fetch_file(urls[0])
 
 	key = "form_16_part_b" if part == "b" else "form_16_part_a"
-	content = _download_result(data, key, required=False) or _download_result(data, "form_16", required=False)
-	if content:
-		_attach(doc, f"part_{part}_file", f"{doc.name}-part-{part.upper()}.pdf", content)
-	doc.db_set(f"part_{part}_status", "Available")
+	return _download_result(client, data, key, required=False) or _download_result(
+		client, data, "form_16", required=False
+	)

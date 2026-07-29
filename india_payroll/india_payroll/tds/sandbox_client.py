@@ -8,7 +8,9 @@ Auth flow (Sandbox):
 """
 
 import base64
+import io
 import json
+import zipfile
 
 import frappe
 import requests
@@ -29,42 +31,91 @@ REQUEST_TIMEOUT = 60
 SENSITIVE_KEYS = frozenset({"x-api-key", "x-api-secret", "authorization", "access_token", "api_secret"})
 
 
+MOCK_SCHEME = "mock://"
+
+# Presigned upload URLs a mocked job-creation response hands back, per endpoint.
+MOCK_UPLOAD_FIELDS = {
+	"potential-notices": ("json_url",),
+	"txt": ("json_url",),
+	"fvu": ("txt_file_upload_url", "csi_file_upload_url"),
+	"e-file": ("fvu_upload_file_url",),
+}
+
+
+def _mock_endpoint_kind(endpoint: str) -> str:
+	ep = (endpoint or "").lower()
+	if "potential-notices" in ep:
+		return "potential-notices"
+	if "fvu" in ep:
+		return "fvu"
+	if "e-file" in ep:
+		return "e-file"
+	if "txt" in ep:
+		return "txt"
+	return "unknown"
+
+
 def _mock_response(method: str, endpoint: str, json_body: dict | None = None) -> dict:
 	"""Canned Sandbox responses for offline mock mode (SandboxTDSClient.mock).
 
-	Keyed by endpoint + method: a POST creates a job (no presigned URL, so the sheet upload is
-	skipped); a GET polls a job and reports it completed with the payload each step's result
-	handler expects. Lets the whole filing pipeline be exercised without the real API.
+	Mirrors the documented job-based contract: a POST creates a job and returns
+	presigned upload URLs, a GET reports the job succeeded with the result URLs
+	each step's handler reads. Result URLs use the `mock://` scheme and are served
+	by `_mock_file_bytes`, so the full validate -> TXT -> FVU -> e-file pipeline
+	(uploads, downloads, attachments, status transitions) runs without the real API.
 	"""
 	ep = (endpoint or "").lower()
 	body = json_body or {}
+	kind = _mock_endpoint_kind(endpoint)
 
-	def b64(text: str) -> str:
-		return base64.b64encode(text.encode()).decode()
+	if "csi" in ep and kind == "unknown":
+		return {
+			"code": 200,
+			"data": {"csi_file_base64": base64.b64encode(b"MOCK-CSI-FILE\n").decode()},
+		}
 
-	# CSI file fetch (a POST, but returns a file rather than a job)
-	if "csi" in ep:
-		return {"data": {"csi_file_base64": b64("MOCK-CSI-FILE\n")}}
-
-	# Job creation
 	if method.upper() == "POST":
-		tag = ep.rstrip("/").rsplit("/", 1)[-1]
-		return {"data": {"job_id": f"MOCK-{tag}-{body.get('tan', 'TAN')}"}}
+		data = {
+			"job_id": f"MOCK-{kind}-{body.get('tan', 'TAN')}",
+			"status": "created",
+			"tan": body.get("tan"),
+			"quarter": body.get("quarter"),
+			"form": body.get("form"),
+		}
+		for field in MOCK_UPLOAD_FIELDS.get(kind, ()):
+			data[field] = f"{MOCK_SCHEME}upload/{kind}/{field}"
+		return {"code": 200, "data": data}
 
-	# Job poll -> completed, with the result fields each step's handler reads
-	data = {"status": "completed"}
-	if "potential-notices" in ep:
-		data["issues"] = []
-	elif "txt" in ep:
-		data["txt_file_base64"] = b64("MOCK-TXT-FILE\n")
-	elif "fvu" in ep:
-		data["fvu_file_base64"] = b64("MOCK-FVU-FILE\n")
-		# Form 27A is optional; omit it so we don't attach an invalid PDF (Frappe parses PDF
-		# attachments to build a preview, which would choke on placeholder bytes).
-	elif "e-file" in ep:
+	data = {"status": "succeeded", "job_id": f"MOCK-{kind}"}
+	if kind == "potential-notices":
+		data["potential_notice_report_url"] = f"{MOCK_SCHEME}result/potential-notices.json"
+	elif kind == "txt":
+		data["txt_url"] = f"{MOCK_SCHEME}result/return.txt"
+	elif kind == "fvu":
+		data["fvu_zip_file_url"] = f"{MOCK_SCHEME}result/fvu.zip"
+	elif kind == "e-file":
+		data["receipt_number"] = "MOCKPRN0001"
 		data["token_number"] = "MOCKTOKEN0001"
-		data["provisional_receipt_number"] = "MOCKPRN0001"
-	return {"data": data}
+		data["receipt_file_url"] = f"{MOCK_SCHEME}result/receipt.txt"
+	return {"code": 200, "data": data}
+
+
+def _mock_file_bytes(url: str) -> bytes:
+	"""Serve the files a mocked job's result URLs point at."""
+	name = url.split("?")[0].rsplit("/", 1)[-1]
+
+	if name == "potential-notices.json":
+		return json.dumps([{"message": "MOCK: no potential notices found for this return."}]).encode()
+	if name == "fvu.zip":
+		buffer = io.BytesIO()
+		# Only the .fvu member: a placeholder Form 27A would be an invalid PDF, and
+		# Frappe parses PDF attachments to build a preview.
+		with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+			zf.writestr("MOCK.fvu", "MOCK-FVU-FILE\n")
+		return buffer.getvalue()
+	if name == "receipt.txt":
+		return b"MOCK-PROVISIONAL-RECEIPT\n"
+	return b"MOCK-TXT-FILE\n"
 
 
 MASK = "***masked***"
@@ -230,7 +281,7 @@ class SandboxTDSClient:
 			except ValueError:
 				output = {"raw": resp.text}
 
-			if resp.status_code >= 400 or (isinstance(output, dict) and output.get("error")):
+			if resp.status_code >= 400 or self._is_error_body(output):
 				error = output
 				message = self._extract_error_message(output, resp.status_code)
 				raise SandboxAPIError(message)
@@ -251,16 +302,65 @@ class SandboxTDSClient:
 			)
 
 	@staticmethod
+	def _is_error_body(output: object) -> bool:
+		"""Sandbox echoes its own status in the body; a 2xx envelope can still carry a 4xx code."""
+		if not isinstance(output, dict):
+			return False
+		if output.get("error"):
+			return True
+		code = output.get("code")
+		return isinstance(code, int) and not isinstance(code, bool) and code >= 400
+
+	@staticmethod
 	def _extract_error_message(output: object, status_code: int | None) -> str:
 		if isinstance(output, dict):
+			code = output.get("code") if isinstance(output.get("code"), int) else status_code
 			for key in ("message", "error", "detail", "transaction_message"):
 				if output.get(key):
-					return f"Sandbox API error ({status_code}): {output[key]}"
+					return f"Sandbox API error ({code}): {output[key]}"
 		return _("Sandbox API returned an error (HTTP {0}).").format(status_code)
+
+	def fetch_file(self, url: str) -> bytes:
+		"""Download a result/report file from the (presigned) URL Sandbox returned."""
+		if url.startswith(MOCK_SCHEME):
+			return _mock_file_bytes(url)
+
+		error = None
+		try:
+			resp = self._session.get(url, timeout=REQUEST_TIMEOUT)
+			resp.raise_for_status()
+			return resp.content
+		except requests.RequestException as e:
+			error = {"exception": str(e)}
+			raise SandboxAPIError(_("Could not download the file from Sandbox: {0}").format(str(e)))
+		finally:
+			self._log_request(
+				url=url.split("?")[0],
+				method="GET",
+				request_headers=None,
+				request_body=None,
+				output=None if error else {"status": "downloaded"},
+				error=error,
+			)
 
 	# ------------------------------------------------------ presigned upload
 	def upload_to_presigned_url(self, presigned_url: str, content: bytes, content_type: str) -> None:
-		"""PUT a file to an S3 presigned URL returned by Sandbox (no auth headers)."""
+		"""PUT a file to an S3 presigned URL returned by Sandbox (no auth headers).
+
+		The URL must be used exactly as returned, and carries its own signature — no
+		Sandbox auth headers are sent. This PUT is what triggers job processing.
+		"""
+		if self.mock or presigned_url.startswith(MOCK_SCHEME):
+			self._log_request(
+				url=presigned_url,
+				method="PUT",
+				request_headers={"Content-Type": content_type},
+				request_body={"bytes": len(content)},
+				output={"status": "uploaded (mock)"},
+				error=None,
+			)
+			return
+
 		try:
 			resp = self._session.put(
 				presigned_url,
