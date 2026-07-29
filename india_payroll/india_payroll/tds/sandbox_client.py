@@ -220,7 +220,18 @@ class SandboxTDSClient:
 		Re-authenticates once on a 401 before giving up.
 		"""
 		if self.mock:
-			return _mock_response(method, endpoint, json_body)
+			resp = _mock_response(method, endpoint, json_body)
+			self._log_request(
+				url=f"{MOCK_SCHEME}{endpoint.lstrip('/')}",
+				method=method,
+				request_headers=None,
+				request_body=json_body or params,
+				output=resp,
+				error=None,
+				reference_doctype=reference_doctype,
+				reference_name=reference_name,
+			)
+			return resp
 
 		url = f"{self.base_url}/{endpoint.lstrip('/')}"
 		headers = {
@@ -344,23 +355,37 @@ class SandboxTDSClient:
 			)
 
 	# ------------------------------------------------------ presigned upload
-	def upload_to_presigned_url(self, presigned_url: str, content: bytes, content_type: str) -> None:
-		"""PUT a file to an S3 presigned URL returned by Sandbox (no auth headers).
+	def upload_to_presigned_url(
+		self,
+		presigned_url: str,
+		content: bytes,
+		content_type: str,
+		reference_doctype: str | None = None,
+		reference_name: str | None = None,
+	) -> int:
+		"""PUT a payload to an S3 presigned URL returned by Sandbox.
 
-		The URL must be used exactly as returned, and carries its own signature — no
-		Sandbox auth headers are sent. This PUT is what triggers job processing.
+		Per Sandbox's job-based contract the URL is used exactly as returned, carries
+		its own signature (so no Sandbox auth headers are sent), and needs a
+		Content-Type matching the payload. A 200 is what starts job processing, so the
+		real status code, ETag and any S3 error body are logged — without them a job
+		stuck at "created" is indistinguishable from a successful upload.
 		"""
 		if self.mock or presigned_url.startswith(MOCK_SCHEME):
 			self._log_request(
 				url=presigned_url,
 				method="PUT",
 				request_headers={"Content-Type": content_type},
-				request_body={"bytes": len(content)},
-				output={"status": "uploaded (mock)"},
+				request_body={"bytes": len(content), "content_type": content_type},
+				output={"status_code": 200, "status": "uploaded (mock)"},
 				error=None,
+				reference_doctype=reference_doctype,
+				reference_name=reference_name,
 			)
-			return
+			return 200
 
+		output = None
+		error = None
 		try:
 			resp = self._session.put(
 				presigned_url,
@@ -368,17 +393,35 @@ class SandboxTDSClient:
 				headers={"Content-Type": content_type},
 				timeout=REQUEST_TIMEOUT,
 			)
-			resp.raise_for_status()
+			output = {
+				"status_code": resp.status_code,
+				"etag": resp.headers.get("ETag"),
+				"x-amz-request-id": resp.headers.get("x-amz-request-id"),
+				"x-amz-id-2": resp.headers.get("x-amz-id-2"),
+				# S3 reports failures as an XML body (e.g. SignatureDoesNotMatch).
+				"body": (resp.text or "")[:2000],
+			}
+			if resp.status_code >= 400:
+				error = output
+				raise SandboxAPIError(
+					_("Upload to Sandbox storage failed (HTTP {0}): {1}").format(
+						resp.status_code, (resp.text or "").strip()[:300] or _("no response body")
+					)
+				)
+			return resp.status_code
 		except requests.RequestException as e:
-			frappe.throw(_("Failed to upload file to Sandbox: {0}").format(str(e)))
+			error = {"exception": str(e)}
+			raise SandboxAPIError(_("Could not upload the payload to Sandbox storage: {0}").format(str(e)))
 		finally:
 			self._log_request(
 				url=presigned_url.split("?")[0],
 				method="PUT",
 				request_headers={"Content-Type": content_type},
-				request_body={"bytes": len(content)},
-				output={"status": "uploaded"},
-				error=None,
+				request_body={"bytes": len(content), "content_type": content_type},
+				output=output,
+				error=error,
+				reference_doctype=reference_doctype,
+				reference_name=reference_name,
 			)
 
 	# --------------------------------------------------------------- logging
@@ -402,7 +445,9 @@ class SandboxTDSClient:
 				{
 					"doctype": "Integration Request",
 					"integration_request_service": INTEGRATION_SERVICE,
-					"request_description": f"{method} {url}",
+					# Data field, varchar(140): a presigned S3 URL overflows it and would
+					# make the whole row fail to insert, losing the log entry entirely.
+					"request_description": f"{method} {url}"[:140],
 					"status": "Failed" if error else "Completed",
 					"url": url,
 					"request_headers": _pretty(mask_sensitive(request_headers), secrets),

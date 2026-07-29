@@ -38,6 +38,11 @@ RECONCILIATION_TOLERANCE = 10.0  # rupees
 # A job that never reaches a terminal status is failed rather than polled forever.
 MAX_JOB_AGE_MINUTES = 180
 
+# "created" means Sandbox is still waiting for the payload upload, which this
+# integration performs immediately after creating the job. Staying there means the
+# upload did not register, and Sandbox offers no way to re-trigger it.
+MAX_CREATED_MINUTES = 20
+
 STEP_SPECS = {
 	"validate": {
 		"label": "Validate",
@@ -295,9 +300,17 @@ def _submit_step(doc, client: SandboxTDSClient, step: str) -> None:
 		url = data.get(field)
 		if not url:
 			frappe.throw(
-				_("Sandbox did not return the upload URL '{0}' for {1}.").format(field, spec["label"])
+				_("Sandbox did not return the upload URL '{0}' for {1}. It returned: {2}").format(
+					field, spec["label"], ", ".join(sorted(data.keys())) or _("nothing")
+				)
 			)
-		client.upload_to_presigned_url(url, content, content_type)
+		client.upload_to_presigned_url(
+			url,
+			content,
+			content_type,
+			reference_doctype="TDS Return",
+			reference_name=doc.name,
+		)
 
 	doc.reload()
 	doc.add_action(spec["label"], "created", job_id=job_id, save=False)
@@ -362,7 +375,29 @@ def poll_return(docname: str) -> None:
 
 	# Still running, or a status this integration does not recognise. Either way the job is
 	# not terminal, so keep polling — but give up once it is clearly never going to finish.
-	if _job_expired(doc, job["row"]):
+	age = _job_age_seconds(doc, job["row"])
+
+	# "created" means Sandbox is still waiting for the payload. The upload happens
+	# seconds after the job is created, so a job still sitting at "created" minutes
+	# later means the PUT never registered. Sandbox has no re-trigger mechanism, so
+	# the only remedy is a fresh job — fail early rather than burn the full timeout.
+	if status == "created" and age and age > MAX_CREATED_MINUTES * 60:
+		_update_action(doc, job["row"], "failed")
+		doc.set_status("Failed", save=False)
+		doc.add_action(
+			spec["label"],
+			"Failed",
+			message=_(
+				"Sandbox job {0} is still awaiting its payload after {1} minutes, so the upload did not "
+				"register. Check the PUT row in Integration Request for the storage response, then run "
+				"{2} again to create a fresh job (presigned URLs cannot be reused)."
+			).format(job["job_id"], MAX_CREATED_MINUTES, spec["label"]),
+			save=False,
+		)
+		doc.save(ignore_permissions=True)
+		return
+
+	if age and age > MAX_JOB_AGE_MINUTES * 60:
 		_update_action(doc, job["row"], "timed_out")
 		doc.set_status("Failed", save=False)
 		doc.add_action(
@@ -380,12 +415,11 @@ def poll_return(docname: str) -> None:
 	doc.save(ignore_permissions=True)
 
 
-def _job_expired(doc, row_name: str) -> bool:
+def _job_age_seconds(doc, row_name: str) -> float | None:
 	for action in doc.filing_actions:
 		if action.name == row_name and action.creation_time:
-			age = time_diff_in_seconds(now_datetime(), get_datetime(action.creation_time))
-			return age > MAX_JOB_AGE_MINUTES * 60
-	return False
+			return time_diff_in_seconds(now_datetime(), get_datetime(action.creation_time))
+	return None
 
 
 def _update_action(doc, row_name: str, status: str) -> None:
