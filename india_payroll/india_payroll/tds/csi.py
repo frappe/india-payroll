@@ -58,10 +58,11 @@ def total_deposited(company: str, financial_year: str, quarter: str) -> float:
 	return sum(flt(c.deposit_amount) for c in challans)
 
 
-MANUAL_CSI_HINT = _(
-	"Attach the CSI file for TAN {0} ({1} {2}) to the 'CSI File' field and run Generate FVU again. "
-	"Download it from the TIN OLTAS 'Challan Status Inquiry' page for the deductor."
-)
+def manual_csi_hint(tan: str, financial_year: str, quarter: str) -> str:
+	return _(
+		"Attach the CSI file for TAN {0} ({1} {2}) to the 'CSI File' field and run Generate FVU again. "
+		"Download it from the TIN OLTAS 'Challan Status Inquiry' page for the deductor."
+	).format(tan, financial_year, quarter)
 
 
 def fetch_csi(client, tan: str, financial_year: str, quarter: str) -> bytes:
@@ -87,7 +88,7 @@ def fetch_csi(client, tan: str, financial_year: str, quarter: str) -> bytes:
 		frappe.throw(
 			_("Could not fetch the CSI file automatically ({0}).").format(str(e)[:200])
 			+ " "
-			+ MANUAL_CSI_HINT.format(tan, financial_year, quarter)
+			+ manual_csi_hint(tan, financial_year, quarter)
 		)
 
 	data = response.get("data", response) if isinstance(response, dict) else {}
@@ -102,5 +103,5 @@ def fetch_csi(client, tan: str, financial_year: str, quarter: str) -> bytes:
 	frappe.throw(
 		_("Sandbox did not return a CSI file for TAN {0} ({1} {2}).").format(tan, financial_year, quarter)
 		+ " "
-		+ MANUAL_CSI_HINT.format(tan, financial_year, quarter)
+		+ manual_csi_hint(tan, financial_year, quarter)
 	)

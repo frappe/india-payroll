@@ -178,13 +178,21 @@ def _poll_one(docname: str, part: str) -> None:
 		return
 
 	content = _certificate_bytes(client, data, part)
-	if content:
-		pdf = _extract_from_zip(content, ".pdf")
-		if pdf:
-			_attach(doc, f"part_{part}_file", f"{doc.name}-part-{part.upper()}.pdf", pdf)
-		else:
-			_attach(doc, f"part_{part}_file", f"{doc.name}-part-{part.upper()}.zip", content)
+	if not content:
+		return
+	filename, payload = _form16_artifact(content, doc.name, part)
+	_attach(doc, f"part_{part}_file", filename, payload)
 	doc.db_set(f"part_{part}_status", "Available")
+
+
+def _form16_artifact(content: bytes, docname: str, part: str) -> tuple[str, bytes]:
+	base = f"{docname}-part-{part.upper()}"
+	pdf = _extract_from_zip(content, ".pdf")
+	if pdf:
+		return f"{base}.pdf", pdf
+	if content[:5] == b"%PDF-":
+		return f"{base}.pdf", content
+	return f"{base}.zip", content
 
 
 def _certificate_bytes(client: SandboxTDSClient, data: dict, part: str) -> bytes | None:
