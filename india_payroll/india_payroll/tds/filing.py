@@ -24,7 +24,6 @@ from frappe.utils import flt, get_datetime, now_datetime, time_diff_in_seconds
 from frappe.utils.file_manager import save_file
 from frappe.utils.scheduler import is_scheduler_inactive
 
-from india_payroll.india_payroll.tds.csi import fetch_csi
 from india_payroll.india_payroll.tds.sandbox_client import SandboxTDSClient
 from india_payroll.india_payroll.tds.sheet_json import (
 	WORKBOOK_24Q,
@@ -185,6 +184,16 @@ def _check_precondition(doc, step: str) -> None:
 	elif step == "generate_fvu":
 		if not doc.txt_file:
 			frappe.throw(_("Generate the TXT file before generating the FVU."))
+		if not doc.csi_file:
+			# The CSI download is OTP-verified, so it cannot be fetched from inside
+			# the background job — it is obtained from the return beforehand.
+			frappe.throw(
+				_(
+					"Attach the CSI file before generating the FVU. Use 'Fetch CSI' to download it "
+					"with a TRACES OTP, or attach a CSI downloaded from the TIN OLTAS "
+					"'Challan Status Inquiry' page to the CSI File field."
+				)
+			)
 	elif step == "e_file":
 		if not doc.fvu_file:
 			frappe.throw(_("Generate the FVU file before e-filing."))
@@ -346,11 +355,6 @@ def _upload_payloads(doc, client: SandboxTDSClient, step: str) -> dict:
 		return {"json_url": (sheet, "application/json")}
 
 	if step == "generate_fvu":
-		if not doc.csi_file:
-			_attach(
-				doc, "csi_file", f"{doc.tan}.csi", fetch_csi(client, doc.tan, doc.financial_year, doc.quarter)
-			)
-			doc.reload()
 		return {
 			"txt_file_upload_url": (_read_attachment(doc.txt_file), "text/plain"),
 			"csi_file_upload_url": (_read_attachment(doc.csi_file), "application/octet-stream"),
@@ -573,7 +577,10 @@ def _result_validate(doc, client: SandboxTDSClient, data: dict) -> None:
 
 def _result_txt(doc, client: SandboxTDSClient, data: dict) -> None:
 	_attach(doc, "txt_file", f"{doc.name}.txt", _download_result(client, data, "txt"))
-	for stale in ("fvu_file", "csi_file", "form_27a"):
+	# The FVU and Form 27A are derived from this TXT, so they are now stale. The CSI
+	# is not — it comes from OLTAS, is independent of the TXT, and re-obtaining it
+	# means going through the TRACES OTP again.
+	for stale in ("fvu_file", "form_27a"):
 		if doc.get(stale):
 			doc.db_set(stale, None)
 

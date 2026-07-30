@@ -107,6 +107,104 @@ class TestErrorBodyDetection(FrappeTestCase):
 		self.assertFalse(SandboxTDSClient._is_error_body({"data": {}}))
 
 
+class TestAwsRejectionDetection(FrappeTestCase):
+	def test_sigv4_complaint_is_recognised(self):
+		# AWS API Gateway answers an unmatched path by trying to parse the JWT as a
+		# SigV4 signature. It reads as an auth failure but means the path is wrong.
+		body = {
+			"code": 400,
+			"message": (
+				"Authorization header requires 'Credential' parameter. Authorization header "
+				"requires 'Signature' parameter. Authorization header requires 'SignedHeaders' "
+				"parameter. Authorization header requires existence of either a 'X-Amz-Date' or "
+				"a 'Date' header."
+			),
+		}
+		self.assertTrue(SandboxTDSClient._looks_like_aws_rejection(body))
+
+	def test_ordinary_sandbox_error_is_not_mistaken_for_one(self):
+		self.assertFalse(SandboxTDSClient._looks_like_aws_rejection({"code": 400, "message": "TAN mismatch"}))
+		self.assertFalse(SandboxTDSClient._looks_like_aws_rejection({"message": "Unauthorized"}))
+		self.assertFalse(SandboxTDSClient._looks_like_aws_rejection(None))
+
+
+class TestCsiEndpoints(FrappeTestCase):
+	def test_paths_match_the_api_reference(self):
+		from india_payroll.india_payroll.tds import csi
+
+		self.assertEqual(csi.CSI_OTP_ENDPOINT, "tds/compliance/csi/otp")
+		self.assertEqual(csi.CSI_VERIFY_ENDPOINT, "tds/compliance/csi/otp/verify")
+		self.assertEqual(csi.CSI_OTP_ENTITY, "in.co.sandbox.tds.compliance.deductors.otp.request")
+		self.assertEqual(csi.CSI_VERIFY_ENTITY, "in.co.sandbox.tds.compliance.deductors.csi.request")
+
+	def test_otp_request_body_matches_the_schema(self):
+		from india_payroll.india_payroll.tds import csi
+
+		captured = {}
+
+		class _Client:
+			def request(self, method, endpoint, json_body=None, **kw):
+				captured["method"] = method
+				captured["endpoint"] = endpoint
+				captured["body"] = json_body
+				return {"data": {"reference_id": "FOS005981930273"}}
+
+		ref = csi.request_csi_otp(
+			_Client(), "MUMW03366G", "+91 98765 43210", "2026-04-01", "2026-06-30", "x" * 25
+		)
+		self.assertEqual(ref, "FOS005981930273")
+		self.assertEqual(captured["method"], "POST")
+		self.assertEqual(captured["endpoint"], "tds/compliance/csi/otp")
+		body = captured["body"]
+		self.assertEqual(body["@entity"], csi.CSI_OTP_ENTITY)
+		self.assertEqual(body["mobile_number"], "9876543210", "must be 10 bare digits")
+		self.assertEqual(body["consent"], "Y")
+		self.assertIsInstance(body["from"], int)
+		self.assertIsInstance(body["to"], int)
+
+	def test_short_reason_is_rejected(self):
+		from india_payroll.india_payroll.tds import csi
+
+		self.assertRaises(
+			frappe.ValidationError,
+			csi.request_csi_otp,
+			None,
+			"MUMW03366G",
+			"9876543210",
+			"2026-04-01",
+			"2026-06-30",
+			"too short",
+		)
+
+	def test_bad_mobile_is_rejected(self):
+		from india_payroll.india_payroll.tds import csi
+
+		self.assertRaises(
+			frappe.ValidationError,
+			csi.request_csi_otp,
+			None,
+			"MUMW03366G",
+			"12345",
+			"2026-04-01",
+			"2026-06-30",
+			"x" * 25,
+		)
+
+	def test_verify_downloads_the_csi_url(self):
+		from india_payroll.india_payroll.tds import csi
+
+		class _Client:
+			def request(self, method, endpoint, json_body=None, **kw):
+				assert endpoint == "tds/compliance/csi/otp/verify"
+				assert json_body["reference_id"] == "REF-1"
+				return {"data": {"csi_url": "https://s3.example/file.csi"}}
+
+			def fetch_file(self, url):
+				return b"CSI-BYTES"
+
+		self.assertEqual(csi.verify_csi_otp(_Client(), "REF-1", "123456"), b"CSI-BYTES")
+
+
 class TestSecretMasking(FrappeTestCase):
 	def test_sensitive_values_masked(self):
 		masked = mask_sensitive(
@@ -213,8 +311,10 @@ class TestTxtRegenerationClears(FrappeTestCase):
 		attach.assert_called_once()
 		self.assertEqual(attach.call_args[0][1], "txt_file")
 		self.assertIsNone(doc.get("fvu_file"))
-		self.assertIsNone(doc.get("csi_file"))
 		self.assertIsNone(doc.get("form_27a"))
+		# The CSI is an OLTAS artefact, independent of the TXT, and costs a TRACES
+		# OTP to re-obtain — regenerating the TXT must not discard it.
+		self.assertEqual(doc.get("csi_file"), "/x.csi")
 
 
 class _FakeClient:
