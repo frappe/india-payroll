@@ -71,6 +71,8 @@
   "files_section",
   "txt_file",
   "csi_file",
+  "csi_reference_id",
+  "csi_mobile_number",
   "sheet_json_file",
   "column_break_files",
   "fvu_file",
@@ -542,6 +544,19 @@
    "fieldname": "rp_country",
    "fieldtype": "Data",
    "label": "Country"
+  },
+  {
+   "fieldname": "csi_reference_id",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "CSI OTP Reference",
+   "read_only": 1
+  },
+  {
+   "description": "Mobile registered with TRACES for the deductor; the CSI OTP is sent here.",
+   "fieldname": "csi_mobile_number",
+   "fieldtype": "Data",
+   "label": "TRACES Mobile Number"
   }
  ],
  "index_web_pages_for_search": 1,

@@ -195,6 +195,40 @@ class TDSReturn(Document):
 		return enqueue_step(self.name, "validate")
 
 	@frappe.whitelist()
+	def request_csi_otp(self, mobile_number: str | None = None, reason: str | None = None) -> str:
+		"""Step 1 of the CSI download: Sandbox sends an OTP to the deductor."""
+		from india_payroll.india_payroll.tds.csi import request_csi_otp
+		from india_payroll.india_payroll.tds.data_assembly import get_quarter_date_range
+		from india_payroll.india_payroll.tds.sandbox_client import SandboxTDSClient
+
+		self.check_permission("write")
+		mobile = mobile_number or self.csi_mobile_number
+		start, end = get_quarter_date_range(self.financial_year, self.quarter)
+		reason = reason or _("CSI file for Form {0} {1} {2} TDS return filing").format(
+			self.form_type, self.quarter, self.financial_year
+		)
+
+		reference_id = request_csi_otp(SandboxTDSClient(), self.tan, mobile, start, end, reason)
+		self.db_set({"csi_reference_id": reference_id, "csi_mobile_number": mobile})
+		return reference_id
+
+	@frappe.whitelist()
+	def submit_csi_otp(self, otp: str) -> str:
+		"""Step 2: exchange the OTP for the CSI file and attach it."""
+		from india_payroll.india_payroll.tds.csi import verify_csi_otp
+		from india_payroll.india_payroll.tds.filing import _attach
+		from india_payroll.india_payroll.tds.sandbox_client import SandboxTDSClient
+
+		self.check_permission("write")
+		if not self.csi_reference_id:
+			frappe.throw(_("Request the CSI OTP first."))
+
+		content = verify_csi_otp(SandboxTDSClient(), self.csi_reference_id, otp)
+		_attach(self, "csi_file", f"{self.tan}-{self.quarter}.csi", content)
+		self.db_set("csi_reference_id", None)
+		return self.csi_file
+
+	@frappe.whitelist()
 	def skip_validation(self, reason: str) -> None:
 		from india_payroll.india_payroll.tds.filing import skip_validation
 

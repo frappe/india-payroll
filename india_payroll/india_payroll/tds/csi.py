@@ -1,23 +1,35 @@
 """Challan helpers for TDS filing.
 
 The CSI (Challan Status Inquiry) file is required alongside the TXT to generate
-the FVU. It originates from OLTAS and is fetched through Sandbox's challan
-endpoint. This module assembles the challan section used in the Sheet JSON and
-retrieves the CSI bytes via the client.
+the FVU. It originates from OLTAS, and Sandbox exposes it as a two-step,
+OTP-verified flow against the deductor's TRACES-registered mobile number:
+
+    POST /tds/compliance/csi/otp         -> reference_id, OTP sent to the deductor
+    POST /tds/compliance/csi/otp/verify  -> csi_url
+
+Because a human has to read the OTP, this cannot run inside the background filing
+job; it is driven from the return instead, and the CSI can always be attached by
+hand as well.
 """
 
 import base64
+import re
 
 import frappe
 from frappe import _
-from frappe.utils import flt
+from frappe.utils import flt, get_datetime
 
 from india_payroll.india_payroll.doctype.tds_challan.tds_challan import get_challans_for_period
-from india_payroll.india_payroll.tds.validators import normalize_financial_year
 
-# Endpoint is configurable so the integration can track Sandbox API changes
-# without a code edit. Override via site_config: "sandbox_tds_csi_endpoint".
-DEFAULT_CSI_ENDPOINT = "tds/compliance/csi"
+CSI_OTP_ENDPOINT = "tds/compliance/csi/otp"
+CSI_VERIFY_ENDPOINT = "tds/compliance/csi/otp/verify"
+CSI_OTP_ENTITY = "in.co.sandbox.tds.compliance.deductors.otp.request"
+CSI_VERIFY_ENTITY = "in.co.sandbox.tds.compliance.deductors.csi.request"
+CSI_REASON_MIN_LENGTH = 20
+
+
+def _epoch_ms(value) -> int:
+	return int(get_datetime(value).timestamp() * 1000)
 
 
 def get_challan_rows(company: str, financial_year: str, quarter: str) -> list:
@@ -38,50 +50,56 @@ def total_deposited(company: str, financial_year: str, quarter: str) -> float:
 	return sum(flt(c.deposit_amount) for c in challans)
 
 
-def manual_csi_hint(tan: str, financial_year: str, quarter: str) -> str:
-	return _(
-		"Attach the CSI file for TAN {0} ({1} {2}) to the 'CSI File' field and run Generate FVU again. "
-		"Download it from the TIN OLTAS 'Challan Status Inquiry' page for the deductor."
-	).format(tan, financial_year, quarter)
+def request_csi_otp(client, tan: str, mobile_number: str, from_date, to_date, reason: str) -> str:
+	"""Start the CSI download: Sandbox sends an OTP to the deductor. Returns a reference id."""
+	mobile = re.sub(r"\D", "", mobile_number or "")[-10:]
+	if not re.fullmatch(r"[1-9][0-9]{9}", mobile):
+		frappe.throw(_("A valid 10-digit mobile number registered with TRACES is required for the CSI OTP."))
 
-
-def fetch_csi(client, tan: str, financial_year: str, quarter: str) -> bytes:
-	"""Fetch the CSI file bytes from Sandbox for the given TAN and period.
-
-	Sandbox's documented CSI download is an interactive, OTP-verified TRACES flow
-	(generate_otp / verify_otp), which cannot run unattended from a background job.
-	This attempts the direct endpoint (overridable via `sandbox_tds_csi_endpoint`)
-	and, when it is unavailable, asks the user to attach the CSI manually.
-	"""
-	endpoint = frappe.conf.get("sandbox_tds_csi_endpoint") or DEFAULT_CSI_ENDPOINT
-	try:
-		response = client.request(
-			"POST",
-			endpoint,
-			json_body={
-				"tan": tan,
-				"financial_year": normalize_financial_year(financial_year),
-				"quarter": quarter,
-			},
-		)
-	except Exception as e:
+	reason = (reason or "").strip()
+	if len(reason) < CSI_REASON_MIN_LENGTH:
 		frappe.throw(
-			_("Could not fetch the CSI file automatically ({0}).").format(str(e)[:200])
-			+ " "
-			+ manual_csi_hint(tan, financial_year, quarter)
+			_("Give a reason of at least {0} characters for the CSI download.").format(CSI_REASON_MIN_LENGTH)
 		)
 
+	response = client.request(
+		"POST",
+		frappe.conf.get("sandbox_tds_csi_otp_endpoint") or CSI_OTP_ENDPOINT,
+		json_body={
+			"@entity": CSI_OTP_ENTITY,
+			"tan": tan,
+			"mobile_number": mobile,
+			"from": _epoch_ms(from_date),
+			"to": _epoch_ms(to_date),
+			"consent": "Y",
+			"reason": reason,
+		},
+	)
+	data = response.get("data", response) if isinstance(response, dict) else {}
+	reference_id = data.get("reference_id")
+	if not reference_id:
+		frappe.throw(_("Sandbox did not return a reference id for the CSI OTP request."))
+	return reference_id
+
+
+def verify_csi_otp(client, reference_id: str, otp: str) -> bytes:
+	"""Complete the CSI download with the OTP and return the file bytes."""
+	response = client.request(
+		"POST",
+		frappe.conf.get("sandbox_tds_csi_verify_endpoint") or CSI_VERIFY_ENDPOINT,
+		json_body={
+			"@entity": CSI_VERIFY_ENTITY,
+			"reference_id": reference_id,
+			"otp": (otp or "").strip(),
+		},
+	)
 	data = response.get("data", response) if isinstance(response, dict) else {}
 
 	if data.get("csi_file_base64"):
 		return base64.b64decode(data["csi_file_base64"])
 
-	for key in ("csi_file_url", "csi_url"):
+	for key in ("csi_url", "csi_file_url"):
 		if data.get(key):
 			return client.fetch_file(data[key])
 
-	frappe.throw(
-		_("Sandbox did not return a CSI file for TAN {0} ({1} {2}).").format(tan, financial_year, quarter)
-		+ " "
-		+ manual_csi_hint(tan, financial_year, quarter)
-	)
+	frappe.throw(_("Sandbox verified the OTP but returned no CSI file."))

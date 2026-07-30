@@ -295,6 +295,13 @@ class SandboxTDSClient:
 
 			if resp.status_code >= 400 or self._is_error_body(output):
 				error = output
+				if self._looks_like_aws_rejection(output):
+					raise SandboxAPIError(
+						_(
+							"Sandbox has no endpoint at '{0}' — the request was rejected by AWS before "
+							"reaching the API. Check the path against the API reference."
+						).format(url)
+					)
 				message = self._extract_error_message(output, resp.status_code)
 				raise SandboxAPIError(message)
 			return output
@@ -322,6 +329,20 @@ class SandboxTDSClient:
 			return True
 		code = output.get("code")
 		return isinstance(code, int) and not isinstance(code, bool) and code >= 400
+
+	@staticmethod
+	def _looks_like_aws_rejection(output: object) -> bool:
+		"""True when AWS, not Sandbox, rejected the call.
+
+		Sandbox sits behind AWS API Gateway. A path that matches no route falls
+		through to an IAM-authorized default, which tries to read our JWT as a SigV4
+		signature and complains about missing Credential/Signature/X-Amz-Date. It
+		reads like an auth problem but always means the endpoint is wrong.
+		"""
+		if not isinstance(output, dict):
+			return False
+		message = str(output.get("message") or "")
+		return "Authorization header requires" in message or "X-Amz-Date" in message
 
 	@staticmethod
 	def _extract_error_message(output: object, status_code: int | None) -> str:

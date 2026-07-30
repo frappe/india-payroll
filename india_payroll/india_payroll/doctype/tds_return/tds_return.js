@@ -46,6 +46,14 @@ frappe.ui.form.on("TDS Return", {
 			step(__("3. Generate FVU"), "generate_fvu");
 			step(__("4. E-File"), "file_return");
 
+			if (!frm.doc.csi_file) {
+				frm.add_custom_button(
+					__("Fetch CSI"),
+					() => prompt_csi_otp(frm),
+					__("File Return")
+				);
+			}
+
 			if (!VALIDATION_SETTLED.includes(status)) {
 				frm.add_custom_button(
 					__("Skip Validation"),
@@ -84,6 +92,55 @@ frappe.ui.form.on("TDS Return", {
 		render_validation_issues(frm);
 	},
 });
+
+// CSI download is OTP-verified against the deductor's TRACES-registered mobile,
+// so it runs in two user-driven steps rather than inside the filing job.
+function prompt_csi_otp(frm) {
+	frappe.prompt(
+		[
+			{
+				fieldname: "mobile_number",
+				fieldtype: "Data",
+				label: __("TRACES Mobile Number"),
+				default: frm.doc.csi_mobile_number,
+				reqd: 1,
+				description: __("The OTP is sent to this number by TRACES."),
+			},
+			{
+				fieldname: "reason",
+				fieldtype: "Small Text",
+				label: __("Reason"),
+				default: __("CSI file for Form {0} {1} {2} TDS return filing", [
+					frm.doc.form_type,
+					frm.doc.quarter,
+					frm.doc.financial_year,
+				]),
+				reqd: 1,
+				description: __("At least 20 characters, as required by TRACES."),
+			},
+		],
+		(values) => {
+			frm.call("request_csi_otp", values).then(() => {
+				frappe.prompt(
+					[{ fieldname: "otp", fieldtype: "Data", label: __("OTP"), reqd: 1 }],
+					(entered) => {
+						frm.call("submit_csi_otp", { otp: entered.otp }).then(() => {
+							frm.reload_doc();
+							frappe.show_alert({
+								message: __("CSI file attached."),
+								indicator: "green",
+							});
+						});
+					},
+					__("Enter the OTP sent by TRACES"),
+					__("Download CSI")
+				);
+			});
+		},
+		__("Fetch CSI File"),
+		__("Send OTP")
+	);
+}
 
 function prompt_skip_validation(frm) {
 	frappe.prompt(
