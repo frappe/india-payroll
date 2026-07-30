@@ -222,6 +222,33 @@ def _challan_tax(challan) -> float:
 	return flt(challan.tds_amount) + flt(challan.surcharge_amount) + flt(challan.education_cess)
 
 
+def previously_utilised(challan: str, current_return: str | None = None) -> float:
+	"""Tax already drawn from a challan by other *submitted* TDS Returns.
+
+	Sandbox documents form24q's `utilized_amount` as "Total Amount of Challan
+	Utilised in previous returns", so a challan carried across returns reports what
+	earlier filings consumed — not what this one allocates.
+	"""
+	if not challan:
+		return 0.0
+	total = frappe.db.sql(
+		"""
+		SELECT SUM(
+			IFNULL(d.tax_deducted, 0)
+			+ IFNULL(d.surcharge, 0)
+			+ IFNULL(d.health_and_education_cess, 0)
+		)
+		FROM `tabTDS Return Deductee` d
+		INNER JOIN `tabTDS Return` r ON r.name = d.parent
+		WHERE d.challan = %(challan)s
+			AND r.docstatus = 1
+			AND (%(current)s IS NULL OR r.name != %(current)s)
+		""",
+		{"challan": challan, "current": current_return},
+	)
+	return flt(total[0][0]) if total and total[0] else 0.0
+
+
 def _allocations(doc) -> dict:
 	"""(serial, bsr) -> tax allocated to that challan by the payment rows."""
 	allocated = {}
@@ -237,9 +264,15 @@ def _allocations(doc) -> dict:
 def challan_payment_mismatches(doc, workbook: str | None = None) -> list[str]:
 	"""Explain any disagreement between the challan sheet and the payment sheet.
 
-	Sandbox reports this as a bare "Challan-payment mismatch", so the comparison it
-	is making — per challan, tax on the challan versus tax allocated by the
-	deductions mapped to it — is spelled out here with the actual figures.
+	A challan may hold *more* tax than the return draws from it — the balance simply
+	stays available for another return, which is why form24q carries a separate
+	"utilised in previous returns" column and why Sandbox's own example workbooks
+	show challans that are only partly used (100000 deposited, 50000 utilised) or
+	not used at all. Only over-drawing is an error: previously utilised plus what
+	this return allocates cannot exceed the tax actually deposited.
+
+	Sandbox reports all of this as a bare "Challan-payment mismatch", so the figures
+	behind it are spelled out here.
 	"""
 	workbook = workbook or workbook_name_for(doc)
 	allocated = _allocations(doc)
@@ -257,28 +290,32 @@ def challan_payment_mismatches(doc, workbook: str | None = None) -> list[str]:
 	for challan in _challans(doc):
 		key = (challan.challan_serial_no, challan.bsr_code)
 		known.add(key)
-		entry = allocated.get(key)
 		label = _("Challan {0} (BSR {1})").format(challan.challan_serial_no, challan.bsr_code)
 
-		if not entry:
-			problems.append(_("{0} has no deduction rows mapped to it.").format(label))
-			continue
+		# An unused or partly used challan is legitimate, so only the total drawn
+		# across returns is checked.
+		entry = allocated.get(key) or {"deducted": 0.0, "rows": 0}
+		earlier = previously_utilised(challan.name, doc.get("name"))
+		available = _challan_tax(challan)
+		drawn = earlier + entry["deducted"]
 
-		expected = _challan_tax(challan)
-		if abs(entry["deducted"] - expected) > 1:
+		if drawn - available > 1:
 			problems.append(
 				_(
-					"{0}: challan tax is {1} (TDS {2} + surcharge {3} + cess {4}), but the {5} "
-					"deduction row(s) mapped to it total {6} — a difference of {7}."
+					"{0}: only {1} of tax was deposited (TDS {2} + surcharge {3} + cess {4}), but {5} "
+					"is being claimed against it — {6} already utilised by earlier returns plus {7} "
+					"from the {8} deduction row(s) here. That is {9} too much."
 				).format(
 					label,
-					expected,
+					available,
 					flt(challan.tds_amount),
 					flt(challan.surcharge_amount),
 					flt(challan.education_cess),
-					entry["rows"],
+					drawn,
+					earlier,
 					entry["deducted"],
-					entry["deducted"] - expected,
+					entry["rows"],
+					drawn - available,
 				)
 			)
 
@@ -370,7 +407,6 @@ def _payee_table_24q(doc, payees: dict) -> dict:
 
 
 def _challan_table_24q(doc) -> dict:
-	allocated = _allocations(doc)
 	rows = [
 		[
 			challan.challan_serial_no,
@@ -383,9 +419,9 @@ def _challan_table_24q(doc) -> dict:
 			int(flt(challan.interest)),
 			int(flt(challan.fee)),
 			int(flt(challan.others)),
-			# What the deductions actually draw from this challan — not the gross
-			# deposit, which also carries interest, fee and penalty.
-			int(allocated.get((challan.challan_serial_no, challan.bsr_code), {}).get("deposited", 0)),
+			# "Total Amount of Challan Utilised in previous returns" — what earlier
+			# filings already drew, not what this return allocates.
+			int(previously_utilised(challan.name, doc.get("name"))),
 		]
 		for challan in _challans(doc)
 	]

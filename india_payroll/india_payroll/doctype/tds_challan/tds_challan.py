@@ -4,7 +4,7 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import flt
+from frappe.utils import add_months, flt, getdate
 
 from india_payroll.india_payroll.tds.validators import validate_tan
 
@@ -44,6 +44,17 @@ class TDSChallan(Document):
 		self.validate_tan()
 		self.validate_bsr_code()
 		self.validate_breakup()
+		self.set_deduction_month()
+
+	def set_deduction_month(self) -> None:
+		"""Default the salary month this challan pays for, from the challan date.
+
+		TDS for a month is deposited by the 7th of the next one, so a challan dated
+		7 May pays April's deduction. Explicitly set months are left alone.
+		"""
+		if self.deduction_month or not self.challan_date:
+			return
+		self.deduction_month = deduction_month_from_date(self.challan_date)
 
 	def validate_tan(self) -> None:
 		if not self.tan and self.company:
@@ -81,6 +92,13 @@ class TDSChallan(Document):
 			)
 
 
+def deduction_month_from_date(challan_date) -> str:
+	"""Salary month a challan paid on `challan_date` covers (the previous month)."""
+	from india_payroll.india_payroll.tds.data_assembly import MONTH_NAMES
+
+	return MONTH_NAMES[add_months(getdate(challan_date), -1).month]
+
+
 def get_challans_for_period(company: str, financial_year: str, quarter: str) -> list[dict]:
 	"""Return submitted challans for a company/FY/quarter (used to build the CSI)."""
 	return frappe.get_all(
@@ -96,6 +114,7 @@ def get_challans_for_period(company: str, financial_year: str, quarter: str) -> 
 			"bsr_code",
 			"challan_serial_no",
 			"challan_date",
+			"deduction_month",
 			"deposit_amount",
 			"tds_amount",
 			"surcharge_amount",

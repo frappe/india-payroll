@@ -12,6 +12,7 @@
   "column_break_head",
   "financial_year",
   "quarter",
+  "deduction_month",
   "section",
   "challan_section",
   "challan_date",
@@ -82,10 +83,10 @@
   },
   {
    "default": "192",
+   "description": "TDS section. 192 for salary (Form 24Q).",
    "fieldname": "section",
    "fieldtype": "Data",
-   "label": "Section",
-   "description": "TDS section. 192 for salary (Form 24Q)."
+   "label": "Section"
   },
   {
    "fieldname": "challan_section",
@@ -100,12 +101,12 @@
    "reqd": 1
   },
   {
+   "description": "7-digit BSR code of the collecting bank branch.",
    "fieldname": "bsr_code",
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "BSR Code",
-   "reqd": 1,
-   "description": "7-digit BSR code of the collecting bank branch."
+   "reqd": 1
   },
   {
    "fieldname": "challan_serial_no",
@@ -134,8 +135,8 @@
    "fieldtype": "Currency",
    "in_list_view": 1,
    "label": "Total Deposited",
-   "reqd": 1,
-   "options": "Company:company:default_currency"
+   "options": "Company:company:default_currency",
+   "reqd": 1
   },
   {
    "default": "TDS Payable by Taxpayer (200)",
@@ -201,6 +202,13 @@
    "options": "TDS Challan",
    "print_hide": 1,
    "read_only": 1
+  },
+  {
+   "description": "Salary month whose TDS this challan pays. Defaults to the month before the challan date (TDS is deposited by the 7th of the following month). Used to map deductees to challans.",
+   "fieldname": "deduction_month",
+   "fieldtype": "Select",
+   "label": "Deduction Month",
+   "options": "\nApril\nMay\nJune\nJuly\nAugust\nSeptember\nOctober\nNovember\nDecember\nJanuary\nFebruary\nMarch"
   }
  ],
  "index_web_pages_for_search": 1,
@@ -213,6 +221,7 @@
  "owner": "Administrator",
  "permissions": [
   {
+   "cancel": 1,
    "create": 1,
    "delete": 1,
    "email": 1,
@@ -223,10 +232,10 @@
    "role": "System Manager",
    "share": 1,
    "submit": 1,
-   "cancel": 1,
    "write": 1
   },
   {
+   "cancel": 1,
    "create": 1,
    "delete": 1,
    "email": 1,
@@ -237,7 +246,6 @@
    "role": "Payroll Manager",
    "share": 1,
    "submit": 1,
-   "cancel": 1,
    "write": 1
   }
  ],
