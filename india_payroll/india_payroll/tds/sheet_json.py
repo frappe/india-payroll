@@ -208,6 +208,91 @@ def _challan_keys(row) -> tuple:
 	return frappe.db.get_value("TDS Challan", row.challan, ["challan_serial_no", "bsr_code"])
 
 
+def _payment_tax(row) -> float:
+	"""Tax a deduction contributes to its challan: TDS + surcharge + cess.
+
+	Interest, fee and penalty sit in their own challan columns and are never part
+	of the deductee-side total.
+	"""
+	return flt(row.tax_deducted) + flt(row.get("surcharge")) + flt(row.get("health_and_education_cess"))
+
+
+def _challan_tax(challan) -> float:
+	"""The challan's tax component, excluding interest / fee / penalty / others."""
+	return flt(challan.tds_amount) + flt(challan.surcharge_amount) + flt(challan.education_cess)
+
+
+def _allocations(doc) -> dict:
+	"""(serial, bsr) -> tax allocated to that challan by the payment rows."""
+	allocated = {}
+	for row in doc.deductees:
+		key = _challan_keys(row)
+		entry = allocated.setdefault(key, {"deducted": 0.0, "deposited": 0.0, "rows": 0})
+		entry["deducted"] += _payment_tax(row)
+		entry["deposited"] += _deposited(row)
+		entry["rows"] += 1
+	return allocated
+
+
+def challan_payment_mismatches(doc, workbook: str | None = None) -> list[str]:
+	"""Explain any disagreement between the challan sheet and the payment sheet.
+
+	Sandbox reports this as a bare "Challan-payment mismatch", so the comparison it
+	is making — per challan, tax on the challan versus tax allocated by the
+	deductions mapped to it — is spelled out here with the actual figures.
+	"""
+	workbook = workbook or workbook_name_for(doc)
+	allocated = _allocations(doc)
+	problems = []
+
+	unmapped = allocated.get((None, None))
+	if unmapped:
+		problems.append(
+			_("{0} deduction row(s) totalling {1} are not linked to any challan.").format(
+				unmapped["rows"], unmapped["deducted"]
+			)
+		)
+
+	known = set()
+	for challan in _challans(doc):
+		key = (challan.challan_serial_no, challan.bsr_code)
+		known.add(key)
+		entry = allocated.get(key)
+		label = _("Challan {0} (BSR {1})").format(challan.challan_serial_no, challan.bsr_code)
+
+		if not entry:
+			problems.append(_("{0} has no deduction rows mapped to it.").format(label))
+			continue
+
+		expected = _challan_tax(challan)
+		if abs(entry["deducted"] - expected) > 1:
+			problems.append(
+				_(
+					"{0}: challan tax is {1} (TDS {2} + surcharge {3} + cess {4}), but the {5} "
+					"deduction row(s) mapped to it total {6} — a difference of {7}."
+				).format(
+					label,
+					expected,
+					flt(challan.tds_amount),
+					flt(challan.surcharge_amount),
+					flt(challan.education_cess),
+					entry["rows"],
+					entry["deducted"],
+					entry["deducted"] - expected,
+				)
+			)
+
+	for key, entry in allocated.items():
+		if key != (None, None) and key not in known:
+			problems.append(
+				_(
+					"{0} deduction row(s) point at challan {1} (BSR {2}), which is not in this quarter."
+				).format(entry["rows"], key[0], key[1])
+			)
+
+	return problems
+
+
 # --------------------------------------------------------------- form 24Q
 def _build_24q(doc) -> dict:
 	payees = _payee_index(doc)
@@ -285,6 +370,7 @@ def _payee_table_24q(doc, payees: dict) -> dict:
 
 
 def _challan_table_24q(doc) -> dict:
+	allocated = _allocations(doc)
 	rows = [
 		[
 			challan.challan_serial_no,
@@ -297,7 +383,9 @@ def _challan_table_24q(doc) -> dict:
 			int(flt(challan.interest)),
 			int(flt(challan.fee)),
 			int(flt(challan.others)),
-			int(flt(challan.deposit_amount)),
+			# What the deductions actually draw from this challan — not the gross
+			# deposit, which also carries interest, fee and penalty.
+			int(allocated.get((challan.challan_serial_no, challan.bsr_code), {}).get("deposited", 0)),
 		]
 		for challan in _challans(doc)
 	]
@@ -492,11 +580,14 @@ def _challan_table_138(doc) -> dict:
 			MINOR_HEAD_138,
 			DEFAULT_MODE_OF_PAYMENT,
 			"Y" if not flt(challan.deposit_amount) else "N",
-			int(flt(challan.tds_amount)),
+			# Tax only. Interest, fee and penalty have their own columns, so folding
+			# the gross deposit in here double-counts them and the payment rows —
+			# which carry tax alone — can never reconcile against it.
+			int(_challan_tax(challan)),
 			int(flt(challan.interest)),
 			int(flt(challan.fee)),
 			int(flt(challan.others)),
-			int(flt(challan.deposit_amount)),
+			int(_challan_tax(challan)),
 		]
 		for challan in _challans(doc)
 	]
