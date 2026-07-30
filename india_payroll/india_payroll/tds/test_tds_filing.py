@@ -3,10 +3,10 @@
 
 import json
 import os
+import re
 from unittest.mock import patch
 
 import frappe
-import jsonschema
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import getdate
 
@@ -380,41 +380,138 @@ class TestSkipValidation(FrappeTestCase):
 		self.assertIn("Generating TXT", str(ctx.exception))
 
 
-def _usable_schema(node):
-	"""Make Sandbox's published schema loadable by a JSON Schema validator.
+# --------------------------------------------------------------- workbook checks
+# A purpose-built checker for Sandbox's workbook schemas. They have a fixed shape
+# (workbook -> sheets oneOf -> blocks oneOf -> list|table), so a generic JSON Schema
+# engine is not needed — and two upstream defects mean one would reject Sandbox's own
+# example workbook anyway:
+#
+#   * `"type": "long"` is not a JSON Schema type.
+#   * Some columns declare a `type` permitting values their `enum` forbids, e.g.
+#     {"type": ["boolean", "null"], "enum": ["true", "false"]} — unsatisfiable.
+#
+# Both are handled below; genuine string enums (minor_head, nature_of_payment, …)
+# stay enforced.
 
-	Two upstream defects, both confirmed by Sandbox's own example workbook failing
-	its own schema:
+TYPE_CHECKS = {
+	"string": str,
+	"integer": int,
+	"long": int,
+	"number": (int, float),
+	"boolean": bool,
+	"object": dict,
+	"array": list,
+}
 
-	* `"type": "long"` is not a JSON Schema type — read it as integer.
-	* Some columns declare a `type` that permits values their `enum` forbids, e.g.
-	  `{"type": ["boolean", "null"], "enum": ["true", "false"]}`, which nothing can
-	  satisfy. Where the declared type and the enum contradict, the enum is dropped;
-	  genuine string enums (minor_head, nature_of_payment, …) stay enforced.
-	"""
-	if isinstance(node, list):
-		return [_usable_schema(item) for item in node]
-	if not isinstance(node, dict):
-		return node
 
-	node = {key: _usable_schema(value) for key, value in node.items()}
+def _types_of(spec):
+	declared = spec.get("type")
+	return set(declared if isinstance(declared, list) else [declared])
 
-	if "type" in node:
-		declared = node["type"]
-		types = set(declared if isinstance(declared, list) else [declared])
-		if "long" in types:
-			types = (types - {"long"}) | {"integer"}
-			node["type"] = sorted(types) if isinstance(declared, list) else "integer"
 
-		enum = node.get("enum")
-		if enum:
-			all_strings = all(isinstance(v, str) for v in enum)
-			if all_strings and "string" not in types:
-				node.pop("enum")
-			elif "null" in types and None not in enum:
-				node["enum"] = [*enum, None]
+def _type_ok(value, types):
+	if value is None:
+		return "null" in types
+	for name in types:
+		expected = TYPE_CHECKS.get(name)
+		if not expected:
+			continue
+		# bool is an int subclass; keep them distinct.
+		if isinstance(value, bool) != (name == "boolean"):
+			continue
+		if isinstance(value, expected):
+			return True
+	return False
 
-	return node
+
+def _enum_ok(value, spec, types):
+	enum = spec.get("enum")
+	if not enum:
+		return True
+	if value is None and "null" in types:
+		return True
+	# Contradictory enum (see note above) — the declared type is authoritative.
+	if all(isinstance(v, str) for v in enum) and "string" not in types:
+		return True
+	return value in enum
+
+
+def _check_value(value, spec, where, errors):
+	types = _types_of(spec)
+	if not _type_ok(value, types):
+		errors.append(f"{where}: {value!r} is not of type {sorted(t for t in types if t)}")
+		return
+	if not _enum_ok(value, spec, types):
+		errors.append(f"{where}: {value!r} not in {spec['enum']}")
+	pattern = spec.get("pattern")
+	if pattern and isinstance(value, str) and not re.search(pattern, value):
+		errors.append(f"{where}: {value!r} does not match {pattern}")
+	maximum = spec.get("maximum")
+	if maximum is not None and isinstance(value, (int, float)) and not isinstance(value, bool):
+		if value > maximum:
+			errors.append(f"{where}: {value} exceeds maximum {maximum}")
+
+
+def _pick(specs, name, where, errors):
+	for spec in specs:
+		if spec["properties"]["name"]["enum"][0] == name:
+			return spec
+	errors.append(f"{where}: unexpected '{name}'")
+	return None
+
+
+def _check_list_block(block, spec, where, errors):
+	properties = spec["properties"]["items"]["items"]["properties"]
+	for item in block["items"]:
+		for key, value in item.items():
+			if key not in properties:
+				errors.append(f"{where}: unknown key '{key}'")
+				continue
+			_check_value(value, properties[key], f"{where}.{key}", errors)
+
+
+def _check_table_block(block, spec, where, errors):
+	expected = [col["enum"][0] for col in spec["properties"]["header"]["items"]]
+	if block["header"] != expected:
+		extra = set(block["header"]) - set(expected)
+		missing = set(expected) - set(block["header"])
+		errors.append(f"{where}.header mismatch (unexpected={sorted(extra)}, missing={sorted(missing)})")
+		return
+
+	rows_spec = spec["properties"]["rows"]["items"]
+	columns = rows_spec["items"]
+	low = rows_spec.get("minItems", len(columns))
+	high = rows_spec.get("maxItems", len(columns))
+	for index, row in enumerate(block["rows"]):
+		if not low <= len(row) <= high:
+			errors.append(f"{where}.rows[{index}]: {len(row)} columns, expected {low}..{high}")
+			continue
+		for value, column, name in zip(row, columns, expected, strict=False):
+			_check_value(value, column, f"{where}.rows[{index}].{name}", errors)
+
+
+def validate_workbook(book, schema):
+	"""Return a list of human-readable schema violations (empty when valid)."""
+	errors = []
+	for key in ("name", "@entity"):
+		_check_value(book.get(key), schema["properties"][key], key, errors)
+
+	sheet_specs = schema["properties"]["sheets"]["items"]["oneOf"]
+	for sheet in book["sheets"]:
+		sheet_spec = _pick(sheet_specs, sheet["name"], "sheets", errors)
+		if not sheet_spec:
+			continue
+		block_specs = sheet_spec["properties"]["blocks"]["items"]["oneOf"]
+		for block in sheet["blocks"]:
+			where = f"{sheet['name']}.{block['name']}"
+			block_spec = _pick(block_specs, block["name"], sheet["name"], errors)
+			if not block_spec:
+				continue
+			if block["@entity"] == "list":
+				_check_list_block(block, block_spec, where, errors)
+			else:
+				_check_table_block(block, block_spec, where, errors)
+	return errors
 
 
 class TestSheetJsonWorkbook(FrappeTestCase):
@@ -428,13 +525,12 @@ class TestSheetJsonWorkbook(FrappeTestCase):
 	def _schema(name):
 		path = os.path.join(os.path.dirname(sheet_json.__file__), "schemas", f"{name}.schema.json")
 		with open(path) as f:
-			return _usable_schema(json.load(f))
+			return json.load(f)
 
 	def _validate(self, book, name):
-		errors = list(jsonschema.Draft7Validator(self._schema(name)).iter_errors(book))
+		errors = validate_workbook(book, self._schema(name))
 		if errors:
-			first = jsonschema.exceptions.best_match(errors)
-			self.fail(f"{name}: {list(first.absolute_path)} -> {first.message[:300]}")
+			self.fail(f"{name}: " + "; ".join(errors[:5]))
 
 	def _doc(self, quarter="Q1", financial_year="2026-2027"):
 		deductee = frappe._dict(
@@ -616,6 +712,55 @@ class TestSheetJsonWorkbook(FrappeTestCase):
 			)
 			# form24q has no deductor_type column at all.
 			self.assertEqual(sheet_json.missing_payer_fields(doc, "form24q_workbook"), [])
+
+	def _corrupt(self, mutate, workbook="form138_workbook"):
+		book = self._build(workbook)
+		mutate(book)
+		return validate_workbook(book, self._schema(workbook))
+
+	def test_validator_catches_wrong_type(self):
+		def mutate(book):
+			book["sheets"][0]["blocks"][0]["items"][1]["tan"] = 12345
+
+		self.assertTrue(any("not of type" in e for e in self._corrupt(mutate)))
+
+	def test_validator_catches_bad_pattern(self):
+		# Only form24q constrains the TAN format; form138 declares a plain string.
+		def mutate(book):
+			book["sheets"][0]["blocks"][0]["items"][1]["tan"] = "NOTATAN"
+
+		self.assertTrue(any("does not match" in e for e in self._corrupt(mutate, "form24q_workbook")))
+
+	def test_validator_catches_unknown_key(self):
+		def mutate(book):
+			book["sheets"][0]["blocks"][0]["items"].append({"nonsense": "x"})
+
+		self.assertTrue(any("unknown key" in e for e in self._corrupt(mutate)))
+
+	def test_validator_catches_header_drift(self):
+		# The original defect class: a column named differently from the contract.
+		def mutate(book):
+			book["sheets"][3]["blocks"][0]["header"][8] = "heath_and_education_cess"
+
+		self.assertTrue(any("header mismatch" in e for e in self._corrupt(mutate, "form24q_workbook")))
+
+	def test_validator_catches_short_row(self):
+		def mutate(book):
+			book["sheets"][1]["blocks"][0]["rows"][0].pop()
+
+		self.assertTrue(any("columns, expected" in e for e in self._corrupt(mutate)))
+
+	def test_validator_catches_bad_enum(self):
+		def mutate(book):
+			book["sheets"][2]["blocks"][0]["rows"][0][3] = "not_a_minor_head"
+
+		self.assertTrue(any("not in" in e for e in self._corrupt(mutate, "form24q_workbook")))
+
+	def test_validator_catches_unexpected_sheet(self):
+		def mutate(book):
+			book["sheets"][0]["name"] = "mystery_sheet"
+
+		self.assertTrue(any("unexpected" in e for e in self._corrupt(mutate)))
 
 	def test_unknown_workbook_is_rejected(self):
 		self.assertRaises(
