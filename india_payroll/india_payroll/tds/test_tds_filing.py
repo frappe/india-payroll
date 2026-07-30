@@ -762,6 +762,99 @@ class TestSheetJsonWorkbook(FrappeTestCase):
 
 		self.assertTrue(any("unexpected" in e for e in self._corrupt(mutate)))
 
+	def _mismatches(self, doc, workbook="form138_workbook", challans=None):
+		challan = frappe._dict(
+			name="TDS-CH-0001",
+			challan_serial_no="12345",
+			bsr_code="1234567",
+			challan_date="2026-06-07",
+			tds_amount=5000,
+			surcharge_amount=0,
+			education_cess=0,
+			interest=0,
+			fee=0,
+			others=0,
+			deposit_amount=5000,
+		)
+		with (
+			patch.object(sheet_json, "get_challan_rows", return_value=challans or [challan]),
+			patch.object(sheet_json.frappe.db, "get_value", return_value=("12345", "1234567")),
+		):
+			return sheet_json.challan_payment_mismatches(doc, workbook)
+
+	def test_balanced_challan_reports_no_mismatch(self):
+		doc = self._doc()
+		doc.deductees[0].tax_deducted = 5000
+		doc.deductees[0].tax_deposited = 5000
+		self.assertEqual(self._mismatches(doc), [])
+
+	def test_mismatch_names_challan_and_difference(self):
+		doc = self._doc()
+		doc.deductees[0].tax_deducted = 4000  # challan carries 5000
+		doc.deductees[0].tax_deposited = 4000
+		problems = self._mismatches(doc)
+		self.assertEqual(len(problems), 1)
+		self.assertIn("12345", problems[0])
+		self.assertIn("1234567", problems[0])
+		self.assertIn("5000", problems[0])
+		self.assertIn("4000", problems[0])
+
+	def test_interest_and_fee_do_not_count_as_tax(self):
+		# The live defect: deposit_amount carries interest/fee, deduction rows never do.
+		challan = frappe._dict(
+			name="TDS-CH-0001",
+			challan_serial_no="12345",
+			bsr_code="1234567",
+			challan_date="2026-06-07",
+			tds_amount=5000,
+			surcharge_amount=0,
+			education_cess=0,
+			interest=300,
+			fee=200,
+			others=0,
+			deposit_amount=5500,
+		)
+		doc = self._doc()
+		doc.deductees[0].tax_deducted = 5000
+		doc.deductees[0].tax_deposited = 5000
+		self.assertEqual(self._mismatches(doc, challans=[challan]), [])
+
+	def test_challan_sheet_excludes_interest_from_tax_columns(self):
+		challan = frappe._dict(
+			name="TDS-CH-0001",
+			challan_serial_no="12345",
+			bsr_code="1234567",
+			challan_date="2026-06-07",
+			tds_amount=5000,
+			surcharge_amount=0,
+			education_cess=0,
+			interest=300,
+			fee=200,
+			others=0,
+			deposit_amount=5500,
+		)
+		with (
+			patch.object(sheet_json, "get_challan_rows", return_value=[challan]),
+			patch.object(sheet_json.frappe.db, "get_value", return_value=("12345", "1234567")),
+			patch.object(sheet_json, "_salary_annexure", return_value=[]),
+		):
+			book = sheet_json.build_sheet_json(self._doc(), "form138_workbook")
+		row = book["sheets"][2]["blocks"][0]["rows"][0]
+		self.assertEqual(row[6], 5000, "total_tax_deducted must exclude interest/fee")
+		self.assertEqual(row[10], 5000, "total_tax_deposited must exclude interest/fee")
+		self.assertEqual(row[7], 300)
+		self.assertEqual(row[8], 200)
+
+	def test_unlinked_deduction_row_is_reported(self):
+		doc = self._doc()
+		doc.deductees[0].challan = None
+		with (
+			patch.object(sheet_json, "get_challan_rows", return_value=[]),
+			patch.object(sheet_json.frappe.db, "get_value", return_value=(None, None)),
+		):
+			problems = sheet_json.challan_payment_mismatches(doc, "form138_workbook")
+		self.assertTrue(any("not linked to any challan" in p for p in problems), problems)
+
 	def test_unknown_workbook_is_rejected(self):
 		self.assertRaises(
 			frappe.ValidationError, sheet_json.build_sheet_json, self._doc(), "form999_workbook"

@@ -173,6 +173,7 @@ def _check_precondition(doc, step: str) -> None:
 			frappe.throw(_("Add deductee rows (use 'Fetch from Payroll') before validating."))
 		_check_deductee_pans(doc)
 		_check_deductor_profile(doc, WORKBOOK_24Q)
+		_check_challan_payments(doc, WORKBOOK_24Q)
 		_check_reconciliation(doc)
 	elif step == "generate_txt":
 		if doc.filing_status not in TXT_READY_STATUSES:
@@ -180,6 +181,7 @@ def _check_precondition(doc, step: str) -> None:
 				_("Validate the return (or explicitly skip validation) before generating the TXT file.")
 			)
 		_check_deductor_profile(doc, workbook_name_for(doc))
+		_check_challan_payments(doc, workbook_name_for(doc))
 	elif step == "generate_fvu":
 		if not doc.txt_file:
 			frappe.throw(_("Generate the TXT file before generating the FVU."))
@@ -246,6 +248,17 @@ def _check_deductee_pans(doc) -> None:
 			)
 			+ "<br>"
 			+ "<br>".join(bad)
+		)
+
+
+def _check_challan_payments(doc, workbook: str) -> None:
+	"""Sandbox reports this as a bare "Challan-payment mismatch"; name the actual gap."""
+	from india_payroll.india_payroll.tds.sheet_json import challan_payment_mismatches
+
+	problems = challan_payment_mismatches(doc, workbook)
+	if problems:
+		frappe.throw(
+			_("The challans and the deduction rows do not reconcile:") + "<br>" + "<br>".join(problems)
 		)
 
 
@@ -504,10 +517,32 @@ def _update_action(doc, row_name: str, status: str) -> None:
 			break
 
 
+def _local_diagnosis(doc, step: str, message: str) -> str:
+	"""Expand a terse Sandbox rejection using the data we hold locally.
+
+	Messages like "Challan-payment mismatch" name the check but not the figures,
+	so the same reconciliation the pre-flight runs is replayed and appended.
+	"""
+	if step not in ("validate", "generate_txt") or "mismatch" not in message.lower():
+		return ""
+
+	from india_payroll.india_payroll.tds.sheet_json import challan_payment_mismatches
+
+	try:
+		workbook = WORKBOOK_24Q if step == "validate" else workbook_name_for(doc)
+		problems = challan_payment_mismatches(doc, workbook)
+	except Exception:
+		frappe.log_error(title=f"TDS mismatch diagnosis failed for {doc.name}")
+		return ""
+
+	return (" " + " ".join(problems)) if problems else ""
+
+
 def _fail(doc, client: SandboxTDSClient, step: str, data: dict) -> None:
 	"""Record a failed job, attaching whatever report Sandbox produced."""
 	spec = STEP_SPECS[step]
 	message = _first_message(data)
+	message += _local_diagnosis(doc, step, message)
 	report_url = next((data[key] for key in spec["failure_urls"] if data.get(key)), None)
 
 	if report_url:
