@@ -95,12 +95,39 @@ def get_tds_lines(company: str, financial_year: str, quarter: str) -> list[dict]
 	return lines
 
 
+def build_challan_month_map(company: str, financial_year: str, quarter: str) -> tuple[dict, str | None]:
+	"""Return ({salary month: challan name}, sole challan for the quarter).
+
+	Each challan declares the salary month it pays for (defaulted from the challan
+	date). Where a month has more than one challan the earliest wins, so the mapping
+	stays deterministic; the challan/payment reconciliation reports any shortfall.
+	"""
+	from india_payroll.india_payroll.doctype.tds_challan.tds_challan import (
+		deduction_month_from_date,
+		get_challans_for_period,
+	)
+
+	challans = get_challans_for_period(company, financial_year, quarter)
+
+	by_month = {}
+	for challan in sorted(challans, key=lambda c: (c.challan_date or getdate("1900-01-01"), c.name)):
+		month = challan.get("deduction_month") or (
+			deduction_month_from_date(challan.challan_date) if challan.challan_date else None
+		)
+		if month and month not in by_month:
+			by_month[month] = challan.name
+
+	sole = challans[0].name if len(challans) == 1 else None
+	return by_month, sole
+
+
 def populate_deductees(doc) -> int:
 	"""Clear and repopulate the TDS Return's deductee table from payroll.
 
 	Returns the number of deductee rows created.
 	"""
 	lines = get_tds_lines(doc.company, doc.financial_year, doc.quarter)
+	challan_by_month, sole_challan = build_challan_month_map(doc.company, doc.financial_year, doc.quarter)
 
 	# Map employee -> PAN in one query.
 	employees = list({line.employee for line in lines})
@@ -116,6 +143,7 @@ def populate_deductees(doc) -> int:
 	doc.set("deductees", [])
 	for line in lines:
 		pay_date = getdate(line.posting_date or line.start_date)
+		month = MONTH_NAMES.get(getdate(line.start_date).month)
 		doc.append(
 			"deductees",
 			{
@@ -123,11 +151,15 @@ def populate_deductees(doc) -> int:
 				"employee_name": line.employee_name,
 				"pan": pan_map.get(line.employee),
 				"deductee_status": "Resident",
-				"month": MONTH_NAMES.get(getdate(line.start_date).month),
+				"month": month,
 				"date_of_payment": pay_date,
 				"date_of_deduction": pay_date,
 				"amount_paid": flt(line.gross_pay),
 				"tax_deducted": flt(line.tax_deducted),
+				# Sandbox joins the payment sheet to the challan sheet, so every row
+				# needs a challan. Match on the month the challan pays for; with a
+				# single challan for the quarter, everything maps to it.
+				"challan": challan_by_month.get(month) or sole_challan,
 			},
 		)
 	return len(doc.deductees)

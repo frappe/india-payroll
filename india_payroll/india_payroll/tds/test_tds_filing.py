@@ -10,7 +10,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import getdate
 
-from india_payroll.india_payroll.tds import filing, sheet_json
+from india_payroll.india_payroll.tds import data_assembly, filing, sheet_json
 from india_payroll.india_payroll.tds.data_assembly import quarter_range_from_start
 from india_payroll.india_payroll.tds.sandbox_client import (
 	SandboxTDSClient,
@@ -514,6 +514,60 @@ def validate_workbook(book, schema):
 	return errors
 
 
+class TestChallanMonthMapping(FrappeTestCase):
+	def test_month_derived_from_challan_date(self):
+		from india_payroll.india_payroll.doctype.tds_challan.tds_challan import (
+			deduction_month_from_date,
+		)
+
+		# TDS is deposited by the 7th of the following month.
+		self.assertEqual(deduction_month_from_date("2026-05-07"), "April")
+		self.assertEqual(deduction_month_from_date("2026-04-07"), "March")
+		self.assertEqual(deduction_month_from_date("2026-01-07"), "December")
+
+	def _map(self, challans):
+		import india_payroll.india_payroll.doctype.tds_challan.tds_challan as challan_module
+
+		with patch.object(challan_module, "get_challans_for_period", return_value=challans):
+			return data_assembly.build_challan_month_map("ACME", "2026-2027", "Q1")
+
+	def test_explicit_month_wins_over_the_date(self):
+		challans = [
+			frappe._dict(name="CH-1", challan_date=getdate("2026-05-07"), deduction_month="June"),
+		]
+		by_month, sole = self._map(challans)
+		self.assertEqual(by_month, {"June": "CH-1"})
+		self.assertEqual(sole, "CH-1")
+
+	def test_month_falls_back_to_the_challan_date(self):
+		challans = [frappe._dict(name="CH-1", challan_date=getdate("2026-05-07"), deduction_month=None)]
+		by_month, _sole = self._map(challans)
+		self.assertEqual(by_month, {"April": "CH-1"})
+
+	def test_one_challan_per_month_maps_each(self):
+		challans = [
+			frappe._dict(name="CH-1", challan_date=getdate("2026-05-07"), deduction_month="April"),
+			frappe._dict(name="CH-2", challan_date=getdate("2026-06-07"), deduction_month="May"),
+			frappe._dict(name="CH-3", challan_date=getdate("2026-07-07"), deduction_month="June"),
+		]
+		by_month, sole = self._map(challans)
+		self.assertEqual(by_month, {"April": "CH-1", "May": "CH-2", "June": "CH-3"})
+		self.assertIsNone(sole, "several challans means no single fallback")
+
+	def test_duplicate_month_keeps_the_earliest(self):
+		challans = [
+			frappe._dict(name="CH-LATE", challan_date=getdate("2026-05-20"), deduction_month="April"),
+			frappe._dict(name="CH-EARLY", challan_date=getdate("2026-05-07"), deduction_month="April"),
+		]
+		by_month, _sole = self._map(challans)
+		self.assertEqual(by_month["April"], "CH-EARLY")
+
+	def test_no_challans_maps_nothing(self):
+		by_month, sole = self._map([])
+		self.assertEqual(by_month, {})
+		self.assertIsNone(sole)
+
+
 class TestSheetJsonWorkbook(FrappeTestCase):
 	"""The uploaded payload must satisfy Sandbox's published workbook schemas.
 
@@ -612,6 +666,7 @@ class TestSheetJsonWorkbook(FrappeTestCase):
 			patch.object(sheet_json, "get_challan_rows", return_value=[challan]),
 			patch.object(sheet_json.frappe.db, "get_value", return_value=("12345", "1234567")),
 			patch.object(sheet_json, "_salary_annexure", return_value=[]),
+			patch.object(sheet_json, "previously_utilised", return_value=0.0),
 		):
 			return sheet_json.build_sheet_json(self._doc(**kw), workbook)
 
@@ -640,6 +695,7 @@ class TestSheetJsonWorkbook(FrappeTestCase):
 			patch.object(sheet_json, "get_challan_rows", return_value=[challan]),
 			patch.object(sheet_json.frappe.db, "get_value", return_value=("12345", "1234567")),
 			patch.object(sheet_json, "_salary_annexure", return_value=annexure),
+			patch.object(sheet_json, "previously_utilised", return_value=0.0),
 		):
 			book = sheet_json.build_sheet_json(self._doc(quarter="Q4"), "form24q_workbook")
 		self._validate(book, "form24q_workbook")
@@ -762,7 +818,7 @@ class TestSheetJsonWorkbook(FrappeTestCase):
 
 		self.assertTrue(any("unexpected" in e for e in self._corrupt(mutate)))
 
-	def _mismatches(self, doc, workbook="form138_workbook", challans=None):
+	def _mismatches(self, doc, workbook="form138_workbook", challans=None, earlier=0.0):
 		challan = frappe._dict(
 			name="TDS-CH-0001",
 			challan_serial_no="12345",
@@ -779,28 +835,59 @@ class TestSheetJsonWorkbook(FrappeTestCase):
 		with (
 			patch.object(sheet_json, "get_challan_rows", return_value=challans or [challan]),
 			patch.object(sheet_json.frappe.db, "get_value", return_value=("12345", "1234567")),
+			patch.object(sheet_json, "previously_utilised", return_value=earlier),
 		):
 			return sheet_json.challan_payment_mismatches(doc, workbook)
 
-	def test_balanced_challan_reports_no_mismatch(self):
+	def test_fully_drawn_challan_reports_no_mismatch(self):
 		doc = self._doc()
 		doc.deductees[0].tax_deducted = 5000
 		doc.deductees[0].tax_deposited = 5000
 		self.assertEqual(self._mismatches(doc), [])
 
-	def test_mismatch_names_challan_and_difference(self):
+	def test_partly_used_challan_is_allowed(self):
+		# A challan may hold more than the return draws — the balance carries over.
 		doc = self._doc()
 		doc.deductees[0].tax_deducted = 4000  # challan carries 5000
 		doc.deductees[0].tax_deposited = 4000
+		self.assertEqual(self._mismatches(doc), [])
+
+	def test_unused_challan_is_allowed(self):
+		doc = self._doc()
+		doc.deductees[0].challan = None
+		problems = self._mismatches(doc)
+		# The unlinked row is still reported, but the untouched challan is not.
+		self.assertTrue(all("only" not in p for p in problems), problems)
+
+	def test_over_drawing_a_challan_is_reported(self):
+		doc = self._doc()
+		doc.deductees[0].tax_deducted = 6000  # challan only carries 5000
+		doc.deductees[0].tax_deposited = 6000
 		problems = self._mismatches(doc)
 		self.assertEqual(len(problems), 1)
 		self.assertIn("12345", problems[0])
-		self.assertIn("1234567", problems[0])
 		self.assertIn("5000", problems[0])
-		self.assertIn("4000", problems[0])
+		self.assertIn("6000", problems[0])
+
+	def test_earlier_returns_count_towards_the_challan(self):
+		# 3000 already utilised leaves 2000; drawing 4000 more over-draws by 2000.
+		doc = self._doc()
+		doc.deductees[0].tax_deducted = 4000
+		doc.deductees[0].tax_deposited = 4000
+		problems = self._mismatches(doc, earlier=3000.0)
+		self.assertEqual(len(problems), 1)
+		self.assertIn("3000", problems[0])
+		self.assertIn("2000", problems[0])
+
+	def test_within_remaining_balance_is_allowed(self):
+		doc = self._doc()
+		doc.deductees[0].tax_deducted = 2000
+		doc.deductees[0].tax_deposited = 2000
+		self.assertEqual(self._mismatches(doc, earlier=3000.0), [])
 
 	def test_interest_and_fee_do_not_count_as_tax(self):
-		# The live defect: deposit_amount carries interest/fee, deduction rows never do.
+		# deposit_amount carries interest/fee; deduction rows never do, so folding the
+		# gross deposit into the tax column would make the challan look over-drawn.
 		challan = frappe._dict(
 			name="TDS-CH-0001",
 			challan_serial_no="12345",
@@ -837,6 +924,7 @@ class TestSheetJsonWorkbook(FrappeTestCase):
 			patch.object(sheet_json, "get_challan_rows", return_value=[challan]),
 			patch.object(sheet_json.frappe.db, "get_value", return_value=("12345", "1234567")),
 			patch.object(sheet_json, "_salary_annexure", return_value=[]),
+			patch.object(sheet_json, "previously_utilised", return_value=0.0),
 		):
 			book = sheet_json.build_sheet_json(self._doc(), "form138_workbook")
 		row = book["sheets"][2]["blocks"][0]["rows"][0]
