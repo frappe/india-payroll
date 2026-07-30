@@ -26,7 +26,11 @@ from frappe.utils.scheduler import is_scheduler_inactive
 
 from india_payroll.india_payroll.tds.csi import fetch_csi
 from india_payroll.india_payroll.tds.sandbox_client import SandboxTDSClient
-from india_payroll.india_payroll.tds.sheet_json import build_sheet_json
+from india_payroll.india_payroll.tds.sheet_json import (
+	WORKBOOK_24Q,
+	build_sheet_json,
+	workbook_name_for,
+)
 from india_payroll.india_payroll.tds.validators import (
 	form_code,
 	normalize_financial_year,
@@ -168,12 +172,14 @@ def _check_precondition(doc, step: str) -> None:
 		if not doc.deductees:
 			frappe.throw(_("Add deductee rows (use 'Fetch from Payroll') before validating."))
 		_check_deductee_pans(doc)
+		_check_deductor_profile(doc, WORKBOOK_24Q)
 		_check_reconciliation(doc)
 	elif step == "generate_txt":
 		if doc.filing_status not in TXT_READY_STATUSES:
 			frappe.throw(
 				_("Validate the return (or explicitly skip validation) before generating the TXT file.")
 			)
+		_check_deductor_profile(doc, workbook_name_for(doc))
 	elif step == "generate_fvu":
 		if not doc.txt_file:
 			frappe.throw(_("Generate the TXT file before generating the FVU."))
@@ -243,6 +249,19 @@ def _check_deductee_pans(doc) -> None:
 		)
 
 
+def _check_deductor_profile(doc, workbook: str) -> None:
+	"""The payer sheet has non-nullable columns; a gap there reads as "TAN mismatch"."""
+	from india_payroll.india_payroll.tds.sheet_json import missing_payer_fields
+
+	missing = missing_payer_fields(doc, workbook)
+	if missing:
+		frappe.throw(
+			_("Sandbox needs these deductor details before the return can be filed:")
+			+ "<br>"
+			+ "<br>".join(missing)
+		)
+
+
 def _check_reconciliation(doc) -> None:
 	from india_payroll.india_payroll.tds.csi import total_deposited
 
@@ -307,7 +326,10 @@ def _upload_payloads(doc, client: SandboxTDSClient, step: str) -> dict:
 	Built before the job is created so a payload error does not orphan a job.
 	"""
 	if step in ("validate", "generate_txt"):
-		sheet = json.dumps(build_sheet_json(doc), default=str).encode()
+		# The two endpoints consume different workbooks: analytics is still on the
+		# Income-tax Act 1961 vocabulary (form24q), reports moved to form138.
+		workbook = WORKBOOK_24Q if step == "validate" else workbook_name_for(doc)
+		sheet = json.dumps(build_sheet_json(doc, workbook), default=str).encode()
 		return {"json_url": (sheet, "application/json")}
 
 	if step == "generate_fvu":

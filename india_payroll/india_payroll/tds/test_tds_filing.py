@@ -2,13 +2,15 @@
 # License: GNU General Public License v3. See license.txt
 
 import json
+import os
 from unittest.mock import patch
 
 import frappe
+import jsonschema
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import getdate
 
-from india_payroll.india_payroll.tds import filing
+from india_payroll.india_payroll.tds import filing, sheet_json
 from india_payroll.india_payroll.tds.data_assembly import quarter_range_from_start
 from india_payroll.india_payroll.tds.sandbox_client import (
 	SandboxTDSClient,
@@ -376,6 +378,249 @@ class TestSkipValidation(FrappeTestCase):
 			with self.assertRaises(frappe.ValidationError) as ctx:
 				filing.skip_validation("TDS-RET-X", "because")
 		self.assertIn("Generating TXT", str(ctx.exception))
+
+
+def _usable_schema(node):
+	"""Make Sandbox's published schema loadable by a JSON Schema validator.
+
+	Two upstream defects, both confirmed by Sandbox's own example workbook failing
+	its own schema:
+
+	* `"type": "long"` is not a JSON Schema type — read it as integer.
+	* Some columns declare a `type` that permits values their `enum` forbids, e.g.
+	  `{"type": ["boolean", "null"], "enum": ["true", "false"]}`, which nothing can
+	  satisfy. Where the declared type and the enum contradict, the enum is dropped;
+	  genuine string enums (minor_head, nature_of_payment, …) stay enforced.
+	"""
+	if isinstance(node, list):
+		return [_usable_schema(item) for item in node]
+	if not isinstance(node, dict):
+		return node
+
+	node = {key: _usable_schema(value) for key, value in node.items()}
+
+	if "type" in node:
+		declared = node["type"]
+		types = set(declared if isinstance(declared, list) else [declared])
+		if "long" in types:
+			types = (types - {"long"}) | {"integer"}
+			node["type"] = sorted(types) if isinstance(declared, list) else "integer"
+
+		enum = node.get("enum")
+		if enum:
+			all_strings = all(isinstance(v, str) for v in enum)
+			if all_strings and "string" not in types:
+				node.pop("enum")
+			elif "null" in types and None not in enum:
+				node["enum"] = [*enum, None]
+
+	return node
+
+
+class TestSheetJsonWorkbook(FrappeTestCase):
+	"""The uploaded payload must satisfy Sandbox's published workbook schemas.
+
+	A malformed workbook is what produced "TAN mismatch" from the TXT job, so the
+	output is validated against the vendored schemas rather than eyeballed.
+	"""
+
+	@staticmethod
+	def _schema(name):
+		path = os.path.join(os.path.dirname(sheet_json.__file__), "schemas", f"{name}.schema.json")
+		with open(path) as f:
+			return _usable_schema(json.load(f))
+
+	def _validate(self, book, name):
+		errors = list(jsonschema.Draft7Validator(self._schema(name)).iter_errors(book))
+		if errors:
+			first = jsonschema.exceptions.best_match(errors)
+			self.fail(f"{name}: {list(first.absolute_path)} -> {first.message[:300]}")
+
+	def _doc(self, quarter="Q1", financial_year="2026-2027"):
+		deductee = frappe._dict(
+			employee="EMP-0001",
+			employee_name="Priya Patel",
+			pan="XXXPX5678A",
+			month="April",
+			date_of_payment="2026-04-30",
+			date_of_deduction="2026-04-30",
+			amount_paid=100000,
+			tax_deducted=5000,
+			challan="TDS-CH-0001",
+			opting_new_regime=1,
+			employee_category="general",
+			is_pan_operative=1,
+			surcharge=0,
+			health_and_education_cess=0,
+			tax_deposited=5000,
+			reason_for_lower_deduction=None,
+			certificate_number=None,
+		)
+		return frappe._dict(
+			company="ACME",
+			financial_year=financial_year,
+			quarter=quarter,
+			tan="MUMW03366G",
+			pan="AAACA1234Z",
+			deductor_name="ACME PRIVATE LIMITED",
+			deductor_branch="HO",
+			deductor_gstin="24AAACA1234Z1ZP",
+			deductor_type_code="K",
+			deductor_email="tds@acme.test",
+			deductor_contact_country_code="91",
+			deductor_contact_number="9876543210",
+			deductor_flat_door_block_number="A-901",
+			deductor_post_office="NAVRANGPURA",
+			deductor_road_street="RELIEF ROAD",
+			deductor_area_locality="CBD",
+			deductor_district="AHMEDABAD",
+			deductor_state="GUJARAT",
+			deductor_postal_code="380001",
+			deductor_country="INDIA",
+			government_state_code=None,
+			ministry_code=None,
+			ministry_name_other=None,
+			account_office_identification_number=None,
+			responsible_person_name="Tony Stark",
+			responsible_person_pan="DKLPT3483J",
+			responsible_person_designation="MANAGER",
+			rp_email=None,
+			rp_contact_country_code=None,
+			rp_contact_number=None,
+			rp_flat_door_block_number=None,
+			rp_post_office=None,
+			rp_road_street=None,
+			rp_area_locality=None,
+			rp_district=None,
+			rp_state=None,
+			rp_postal_code=None,
+			rp_country=None,
+			deductees=[deductee],
+		)
+
+	def _build(self, workbook, **kw):
+		challan = frappe._dict(
+			name="TDS-CH-0001",
+			challan_serial_no="12345",
+			bsr_code="1234567",
+			challan_date="2026-06-07",
+			tds_amount=5000,
+			surcharge_amount=0,
+			education_cess=0,
+			interest=0,
+			fee=0,
+			others=0,
+			deposit_amount=5000,
+		)
+		with (
+			patch.object(sheet_json, "get_challan_rows", return_value=[challan]),
+			patch.object(sheet_json.frappe.db, "get_value", return_value=("12345", "1234567")),
+			patch.object(sheet_json, "_salary_annexure", return_value=[]),
+		):
+			return sheet_json.build_sheet_json(self._doc(**kw), workbook)
+
+	def test_form138_matches_published_schema(self):
+		self._validate(self._build("form138_workbook"), "form138_workbook")
+
+	def test_form24q_matches_published_schema(self):
+		self._validate(self._build("form24q_workbook"), "form24q_workbook")
+
+	def test_form24q_q4_with_annexure_matches_schema(self):
+		annexure = [{"employee": "EMP-0001", "gross_salary": 1200000, "total_tax": 60000}]
+		challan = frappe._dict(
+			name="TDS-CH-0001",
+			challan_serial_no="12345",
+			bsr_code="1234567",
+			challan_date="2027-03-07",
+			tds_amount=5000,
+			surcharge_amount=0,
+			education_cess=0,
+			interest=0,
+			fee=0,
+			others=0,
+			deposit_amount=5000,
+		)
+		with (
+			patch.object(sheet_json, "get_challan_rows", return_value=[challan]),
+			patch.object(sheet_json.frappe.db, "get_value", return_value=("12345", "1234567")),
+			patch.object(sheet_json, "_salary_annexure", return_value=annexure),
+		):
+			book = sheet_json.build_sheet_json(self._doc(quarter="Q4"), "form24q_workbook")
+		self._validate(book, "form24q_workbook")
+		salary = book["sheets"][4]["blocks"][0]
+		self.assertEqual(salary["name"], "salary_detail_table")
+		self.assertEqual(len(salary["rows"]), 1)
+
+	def test_tan_is_present_in_the_payer_sheet(self):
+		# The exact defect behind Sandbox's "TAN mismatch": no payer_sheet TAN.
+		for workbook in ("form138_workbook", "form24q_workbook"):
+			book = self._build(workbook)
+			payer = book["sheets"][0]["blocks"][0]
+			tan = next(v for item in payer["items"] for k, v in item.items() if k == "tan")
+			self.assertEqual(tan, "MUMW03366G", workbook)
+
+	def test_dates_are_epoch_milliseconds(self):
+		book = self._build("form138_workbook")
+		challan_row = book["sheets"][2]["blocks"][0]["rows"][0]
+		epoch = challan_row[2]
+		self.assertIsInstance(epoch, int)
+		# Milliseconds, not seconds — a seconds value would be ~1e9.
+		self.assertGreater(epoch, 1_000_000_000_000)
+
+	def test_payment_rows_reference_the_payee_serial(self):
+		book = self._build("form138_workbook")
+		payee_sr = book["sheets"][1]["blocks"][0]["rows"][0][0]
+		payment_sr = book["sheets"][3]["blocks"][0]["rows"][0][0]
+		self.assertEqual(payee_sr, payment_sr)
+
+	def test_workbook_chosen_by_act_year(self):
+		self.assertEqual(
+			sheet_json.workbook_name_for(frappe._dict(financial_year="2026-2027")), "form138_workbook"
+		)
+		self.assertEqual(
+			sheet_json.workbook_name_for(frappe._dict(financial_year="2025-2026")), "form24q_workbook"
+		)
+
+	def test_complete_profile_reports_nothing_missing(self):
+		with (
+			patch.object(sheet_json, "get_challan_rows", return_value=[]),
+			patch.object(sheet_json.frappe.db, "get_value", return_value=(None, None)),
+			patch.object(sheet_json, "_salary_annexure", return_value=[]),
+		):
+			for workbook in ("form138_workbook", "form24q_workbook"):
+				self.assertEqual(sheet_json.missing_payer_fields(self._doc(), workbook), [], workbook)
+
+	def test_missing_deductor_pan_is_reported(self):
+		# The exact hole behind the live "TAN mismatch": a non-nullable payer column
+		# left blank. It must be named locally, not bounced back by Sandbox.
+		doc = self._doc()
+		doc.pan = None
+		with (
+			patch.object(sheet_json, "get_challan_rows", return_value=[]),
+			patch.object(sheet_json.frappe.db, "get_value", return_value=(None, None)),
+			patch.object(sheet_json, "_salary_annexure", return_value=[]),
+		):
+			missing = sheet_json.missing_payer_fields(doc, "form138_workbook")
+		self.assertTrue(any(item.endswith("pan") for item in missing), missing)
+
+	def test_missing_deductor_type_reported_for_new_act_only(self):
+		doc = self._doc()
+		doc.deductor_type_code = None
+		with (
+			patch.object(sheet_json, "get_challan_rows", return_value=[]),
+			patch.object(sheet_json.frappe.db, "get_value", return_value=(None, None)),
+			patch.object(sheet_json, "_salary_annexure", return_value=[]),
+		):
+			self.assertTrue(
+				any("deductor_type" in m for m in sheet_json.missing_payer_fields(doc, "form138_workbook"))
+			)
+			# form24q has no deductor_type column at all.
+			self.assertEqual(sheet_json.missing_payer_fields(doc, "form24q_workbook"), [])
+
+	def test_unknown_workbook_is_rejected(self):
+		self.assertRaises(
+			frappe.ValidationError, sheet_json.build_sheet_json, self._doc(), "form999_workbook"
+		)
 
 
 class TestValidationIssues(FrappeTestCase):
