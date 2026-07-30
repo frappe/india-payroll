@@ -10,7 +10,7 @@ import base64
 
 import frappe
 from frappe import _
-from frappe.utils import flt, formatdate
+from frappe.utils import flt
 
 from india_payroll.india_payroll.doctype.tds_challan.tds_challan import get_challans_for_period
 from india_payroll.india_payroll.tds.validators import normalize_financial_year
@@ -20,8 +20,8 @@ from india_payroll.india_payroll.tds.validators import normalize_financial_year
 DEFAULT_CSI_ENDPOINT = "tds/compliance/csi"
 
 
-def build_challan_section(company: str, financial_year: str, quarter: str) -> list[dict]:
-	"""Return the challan rows for a return, in the shape Sandbox's Sheet JSON expects."""
+def get_challan_rows(company: str, financial_year: str, quarter: str) -> list:
+	"""Submitted challans for the period. Shaping into sheet columns is the caller's job."""
 	challans = get_challans_for_period(company, financial_year, quarter)
 	if not challans:
 		frappe.throw(
@@ -29,27 +29,7 @@ def build_challan_section(company: str, financial_year: str, quarter: str) -> li
 				company, financial_year, quarter
 			)
 		)
-
-	section = []
-	for ch in challans:
-		section.append(
-			{
-				"challan_name": ch.name,
-				"bsr_code": ch.bsr_code,
-				"challan_serial_no": ch.challan_serial_no,
-				"challan_date": formatdate(ch.challan_date, "dd-MM-yyyy"),
-				"section": ch.section or "192",
-				"minor_head": "200" if (ch.minor_head or "").endswith("(200)") else "400",
-				"tds": flt(ch.tds_amount),
-				"surcharge": flt(ch.surcharge_amount),
-				"education_cess": flt(ch.education_cess),
-				"interest": flt(ch.interest),
-				"fee": flt(ch.fee),
-				"others": flt(ch.others),
-				"total": flt(ch.deposit_amount),
-			}
-		)
-	return section
+	return challans
 
 
 def total_deposited(company: str, financial_year: str, quarter: str) -> float:

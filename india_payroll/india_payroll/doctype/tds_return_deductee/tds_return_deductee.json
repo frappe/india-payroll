@@ -17,7 +17,15 @@
   "tax_deducted",
   "date_of_deduction",
   "challan",
-  "remarks"
+  "remarks",
+  "surcharge",
+  "health_and_education_cess",
+  "tax_deposited",
+  "opting_new_regime",
+  "employee_category",
+  "is_pan_operative",
+  "reason_for_lower_deduction",
+  "certificate_number"
  ],
  "fields": [
   {
@@ -98,6 +106,53 @@
    "fieldname": "remarks",
    "fieldtype": "Small Text",
    "label": "Remarks"
+  },
+  {
+   "default": "0",
+   "fieldname": "surcharge",
+   "fieldtype": "Currency",
+   "label": "Surcharge"
+  },
+  {
+   "default": "0",
+   "fieldname": "health_and_education_cess",
+   "fieldtype": "Currency",
+   "label": "Health & Education Cess"
+  },
+  {
+   "description": "Defaults to Tax Deducted when blank.",
+   "fieldname": "tax_deposited",
+   "fieldtype": "Currency",
+   "label": "Tax Deposited"
+  },
+  {
+   "default": "1",
+   "fieldname": "opting_new_regime",
+   "fieldtype": "Check",
+   "label": "Opting New Regime"
+  },
+  {
+   "default": "general",
+   "fieldname": "employee_category",
+   "fieldtype": "Select",
+   "label": "Employee Category",
+   "options": "general\nsenior_citizen\nsuper_senior_citizen"
+  },
+  {
+   "default": "1",
+   "fieldname": "is_pan_operative",
+   "fieldtype": "Check",
+   "label": "PAN Operative"
+  },
+  {
+   "fieldname": "reason_for_lower_deduction",
+   "fieldtype": "Data",
+   "label": "Reason for Lower Deduction"
+  },
+  {
+   "fieldname": "certificate_number",
+   "fieldtype": "Data",
+   "label": "Certificate Number"
   }
  ],
  "index_web_pages_for_search": 1,

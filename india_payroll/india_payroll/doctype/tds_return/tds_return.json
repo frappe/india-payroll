@@ -24,6 +24,41 @@
   "responsible_person_pan",
   "column_break_ded",
   "responsible_person_designation",
+  "deductor_branch",
+  "deductor_type_code",
+  "deductor_gstin",
+  "deductor_email",
+  "deductor_contact_country_code",
+  "deductor_contact_number",
+  "deductor_address_section",
+  "deductor_flat_door_block_number",
+  "deductor_post_office",
+  "deductor_road_street",
+  "deductor_area_locality",
+  "column_break_addr",
+  "deductor_district",
+  "deductor_state",
+  "deductor_postal_code",
+  "deductor_country",
+  "govt_section",
+  "government_state_code",
+  "ministry_code",
+  "column_break_govt",
+  "ministry_name_other",
+  "account_office_identification_number",
+  "rp_address_section",
+  "rp_email",
+  "rp_contact_country_code",
+  "rp_contact_number",
+  "rp_flat_door_block_number",
+  "rp_post_office",
+  "column_break_rp",
+  "rp_road_street",
+  "rp_area_locality",
+  "rp_district",
+  "rp_state",
+  "rp_postal_code",
+  "rp_country",
   "deductees_section",
   "deductees",
   "totals_section",
@@ -123,11 +158,11 @@
   },
   {
    "depends_on": "eval:doc.return_type=='Revised'",
+   "description": "15-digit provisional receipt number of the original/last accepted return.",
    "fieldname": "previous_receipt_number",
    "fieldtype": "Data",
    "label": "Previous Receipt Number",
-   "mandatory_depends_on": "eval:doc.return_type=='Revised'",
-   "description": "15-digit provisional receipt number of the original/last accepted return."
+   "mandatory_depends_on": "eval:doc.return_type=='Revised'"
   },
   {
    "fieldname": "column_break_cfg",
@@ -201,15 +236,15 @@
    "fieldname": "total_amount_paid",
    "fieldtype": "Currency",
    "label": "Total Amount Paid",
-   "read_only": 1,
-   "options": "Company:company:default_currency"
+   "options": "Company:company:default_currency",
+   "read_only": 1
   },
   {
    "fieldname": "total_tax_deducted",
    "fieldtype": "Currency",
    "label": "Total Tax Deducted",
-   "read_only": 1,
-   "options": "Company:company:default_currency"
+   "options": "Company:company:default_currency",
+   "read_only": 1
   },
   {
    "fieldname": "column_break_tot",
@@ -219,8 +254,8 @@
    "fieldname": "total_tax_deposited",
    "fieldtype": "Currency",
    "label": "Total Tax Deposited (Challans)",
-   "read_only": 1,
-   "options": "Company:company:default_currency"
+   "options": "Company:company:default_currency",
+   "read_only": 1
   },
   {
    "collapsible": 1,
@@ -323,6 +358,190 @@
    "options": "TDS Return",
    "print_hide": 1,
    "read_only": 1
+  },
+  {
+   "fieldname": "deductor_branch",
+   "fieldtype": "Data",
+   "label": "Branch / Division"
+  },
+  {
+   "description": "Single-letter ITD code, e.g. K (company), A (government).",
+   "fieldname": "deductor_type_code",
+   "fieldtype": "Data",
+   "label": "Deductor Type Code"
+  },
+  {
+   "fieldname": "deductor_gstin",
+   "fieldtype": "Data",
+   "label": "GSTIN"
+  },
+  {
+   "fieldname": "deductor_email",
+   "fieldtype": "Data",
+   "label": "Deductor Email",
+   "options": "Email"
+  },
+  {
+   "default": "91",
+   "fieldname": "deductor_contact_country_code",
+   "fieldtype": "Data",
+   "label": "Contact Country Code"
+  },
+  {
+   "fieldname": "deductor_contact_number",
+   "fieldtype": "Data",
+   "label": "Contact Number"
+  },
+  {
+   "fieldname": "deductor_address_section",
+   "fieldtype": "Section Break",
+   "label": "Deductor Address"
+  },
+  {
+   "fieldname": "deductor_flat_door_block_number",
+   "fieldtype": "Data",
+   "label": "Flat / Door / Block No."
+  },
+  {
+   "fieldname": "deductor_post_office",
+   "fieldtype": "Data",
+   "label": "Post Office"
+  },
+  {
+   "fieldname": "deductor_road_street",
+   "fieldtype": "Data",
+   "label": "Road / Street / Block / Sector"
+  },
+  {
+   "fieldname": "deductor_area_locality",
+   "fieldtype": "Data",
+   "label": "Area / Locality"
+  },
+  {
+   "fieldname": "column_break_addr",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
+   "fieldname": "deductor_district",
+   "fieldtype": "Data",
+   "label": "District / City"
+  },
+  {
+   "fieldname": "deductor_state",
+   "fieldtype": "Data",
+   "label": "State"
+  },
+  {
+   "fieldname": "deductor_postal_code",
+   "fieldtype": "Data",
+   "label": "PIN Code"
+  },
+  {
+   "default": "INDIA",
+   "fieldname": "deductor_country",
+   "fieldtype": "Data",
+   "label": "Country"
+  },
+  {
+   "collapsible": 1,
+   "depends_on": "eval:doc.deductor_type_code && ['A','S','D','E','G','H','L','N'].includes(doc.deductor_type_code)",
+   "fieldname": "govt_section",
+   "fieldtype": "Section Break",
+   "label": "Government Deductor"
+  },
+  {
+   "fieldname": "government_state_code",
+   "fieldtype": "Data",
+   "label": "Government State Code"
+  },
+  {
+   "fieldname": "ministry_code",
+   "fieldtype": "Data",
+   "label": "Ministry Code"
+  },
+  {
+   "fieldname": "column_break_govt",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
+   "fieldname": "ministry_name_other",
+   "fieldtype": "Data",
+   "label": "Ministry Name (Other)"
+  },
+  {
+   "fieldname": "account_office_identification_number",
+   "fieldtype": "Data",
+   "label": "AIN"
+  },
+  {
+   "fieldname": "rp_address_section",
+   "fieldtype": "Section Break",
+   "label": "Responsible Person Contact"
+  },
+  {
+   "fieldname": "rp_email",
+   "fieldtype": "Data",
+   "label": "Email",
+   "options": "Email"
+  },
+  {
+   "default": "91",
+   "fieldname": "rp_contact_country_code",
+   "fieldtype": "Data",
+   "label": "Contact Country Code"
+  },
+  {
+   "fieldname": "rp_contact_number",
+   "fieldtype": "Data",
+   "label": "Contact Number"
+  },
+  {
+   "fieldname": "rp_flat_door_block_number",
+   "fieldtype": "Data",
+   "label": "Flat / Door / Block No."
+  },
+  {
+   "fieldname": "rp_post_office",
+   "fieldtype": "Data",
+   "label": "Post Office"
+  },
+  {
+   "fieldname": "column_break_rp",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
+   "fieldname": "rp_road_street",
+   "fieldtype": "Data",
+   "label": "Road / Street / Block / Sector"
+  },
+  {
+   "fieldname": "rp_area_locality",
+   "fieldtype": "Data",
+   "label": "Area / Locality"
+  },
+  {
+   "fieldname": "rp_district",
+   "fieldtype": "Data",
+   "label": "District / City"
+  },
+  {
+   "fieldname": "rp_state",
+   "fieldtype": "Data",
+   "label": "State"
+  },
+  {
+   "fieldname": "rp_postal_code",
+   "fieldtype": "Data",
+   "label": "PIN Code"
+  },
+  {
+   "default": "INDIA",
+   "fieldname": "rp_country",
+   "fieldtype": "Data",
+   "label": "Country"
   }
  ],
  "index_web_pages_for_search": 1,
@@ -335,6 +554,7 @@
  "owner": "Administrator",
  "permissions": [
   {
+   "cancel": 1,
    "create": 1,
    "delete": 1,
    "email": 1,
@@ -345,10 +565,10 @@
    "role": "System Manager",
    "share": 1,
    "submit": 1,
-   "cancel": 1,
    "write": 1
   },
   {
+   "cancel": 1,
    "create": 1,
    "delete": 1,
    "email": 1,
@@ -359,7 +579,6 @@
    "role": "Payroll Manager",
    "share": 1,
    "submit": 1,
-   "cancel": 1,
    "write": 1
   }
  ],
