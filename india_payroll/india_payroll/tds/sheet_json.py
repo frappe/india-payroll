@@ -349,7 +349,10 @@ def _build_24q(doc) -> dict:
 							("branch", _text(doc.deductor_branch)),
 							("gstin", _text(doc.deductor_gstin)),
 							("street", _text(doc.deductor_road_street)),
-							("area", _text(doc.deductor_area_locality)),
+							(
+								"area",
+								_text(doc.deductor_area_locality) or _text(doc.deductor_district),
+							),
 							("city", _text(doc.deductor_district)),
 							("state", _text(doc.deductor_state)),
 							("postal_code", _text(doc.deductor_postal_code)),
@@ -364,7 +367,11 @@ def _build_24q(doc) -> dict:
 							("name", _text(doc.responsible_person_name)),
 							("pan", _text(doc.responsible_person_pan)),
 							("street", _text(doc.rp_road_street or doc.deductor_road_street)),
-							("area", _text(doc.rp_area_locality or doc.deductor_area_locality)),
+							(
+								"area",
+								_text(doc.rp_area_locality or doc.deductor_area_locality)
+								or _text(doc.rp_district or doc.deductor_district),
+							),
 							("city", _text(doc.rp_district or doc.deductor_district)),
 							("state", _text(doc.rp_state or doc.deductor_state)),
 							("postal_code", _text(doc.rp_postal_code or doc.deductor_postal_code)),

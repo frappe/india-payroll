@@ -20,6 +20,9 @@
   "filing_status",
   "deductor_section",
   "deductor_name",
+  "deductor_address",
+  "deductor_contact",
+  "responsible_person_contact",
   "responsible_person_name",
   "responsible_person_pan",
   "column_break_ded",
@@ -47,6 +50,7 @@
   "ministry_name_other",
   "account_office_identification_number",
   "rp_address_section",
+  "rp_address",
   "rp_email",
   "rp_contact_country_code",
   "rp_contact_number",
@@ -557,6 +561,34 @@
    "fieldname": "csi_mobile_number",
    "fieldtype": "Data",
    "label": "TRACES Mobile Number"
+  },
+  {
+   "description": "Selecting an address fills the address fields below.",
+   "fieldname": "deductor_address",
+   "fieldtype": "Link",
+   "label": "Deductor Address",
+   "options": "Address"
+  },
+  {
+   "description": "Fills the deductor's email and phone.",
+   "fieldname": "deductor_contact",
+   "fieldtype": "Link",
+   "label": "Deductor Contact",
+   "options": "Contact"
+  },
+  {
+   "description": "Fills the name, designation, email and phone below.",
+   "fieldname": "responsible_person_contact",
+   "fieldtype": "Link",
+   "label": "Responsible Person",
+   "options": "Contact"
+  },
+  {
+   "description": "Leave blank to reuse the deductor's address.",
+   "fieldname": "rp_address",
+   "fieldtype": "Link",
+   "label": "Responsible Person Address",
+   "options": "Address"
   }
  ],
  "index_web_pages_for_search": 1,

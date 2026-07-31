@@ -12,6 +12,37 @@ from india_payroll.india_payroll.tds.validators import (
 	validate_tan,
 )
 
+ADDRESS_AND_CONTACT_MAP = {
+	"deductor_address": {
+		"address_line1": "deductor_flat_door_block_number",
+		"address_line2": "deductor_road_street",
+		"county": "deductor_area_locality",
+		"city": "deductor_district",
+		"state": "deductor_state",
+		"pincode": "deductor_postal_code",
+		"country": "deductor_country",
+	},
+	"deductor_contact": {
+		"email_id": "deductor_email",
+		"mobile_no": "deductor_contact_number",
+	},
+	"responsible_person_contact": {
+		"full_name": "responsible_person_name",
+		"designation": "responsible_person_designation",
+		"email_id": "rp_email",
+		"mobile_no": "rp_contact_number",
+	},
+	"rp_address": {
+		"address_line1": "rp_flat_door_block_number",
+		"address_line2": "rp_road_street",
+		"county": "rp_area_locality",
+		"city": "rp_district",
+		"state": "rp_state",
+		"pincode": "rp_postal_code",
+		"country": "rp_country",
+	},
+}
+
 
 class TDSReturn(Document):
 	# begin: auto-generated types
@@ -59,6 +90,7 @@ class TDSReturn(Document):
 
 	def validate(self) -> None:
 		self.set_missing_deductor_values()
+		self.pull_address_and_contact()
 		self.validate_identity()
 		self.validate_deductees()
 		self.calculate_totals()
@@ -70,6 +102,17 @@ class TDSReturn(Document):
 			self.tan = frappe.db.get_value("Company", self.company, "tan")
 		if not self.pan:
 			self.pan = frappe.db.get_value("Company", self.company, "tax_id")
+
+	def pull_address_and_contact(self) -> None:
+		for link_field, mapping in ADDRESS_AND_CONTACT_MAP.items():
+			source = self.get(link_field)
+			if not source:
+				continue
+			doctype = "Address" if "address" in link_field else "Contact"
+			values = frappe.db.get_value(doctype, source, list(mapping), as_dict=True) or {}
+			for source_field, target_field in mapping.items():
+				if not self.get(target_field) and values.get(source_field):
+					self.set(target_field, values[source_field])
 
 	def validate_identity(self) -> None:
 		if not self.tan:
