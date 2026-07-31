@@ -280,14 +280,104 @@ class TestEPF(HRMSTestSuite):
 		doc = frappe._dict(
 			company="_Test Company",
 			earnings=[
-				frappe._dict(salary_component="Basic Salary", amount=20_000),
-				frappe._dict(salary_component="HRA", amount=8_000),
-				frappe._dict(salary_component="Bonus", amount=5_000, additional_salary="ADSAL-0001"),
+				frappe._dict(salary_component="Basic Salary", default_amount=20_000, amount=20_000),
+				frappe._dict(salary_component="HRA", default_amount=8_000, amount=8_000),
+				frappe._dict(
+					salary_component="Bonus",
+					default_amount=5_000,
+					amount=5_000,
+					additional_salary="ADSAL-0001",
+				),
 			],
 		)
 
 		# Only Basic counts → 20,000 (HRA and the Additional-Salary bonus dropped).
 		self.assertEqual(_compute_pf_wage(doc), 20_000)
+
+	def test_pf_wage_uses_unprorated_structure_amount(self):
+		"""
+		PF wage tracks the full Salary Structure amount (``default_amount``),
+		not the LOP-prorated ``amount``, so the ceiling test sees the real
+		structure wage even in an LOP month.
+		"""
+		from india_payroll.india_payroll.epf import _compute_pf_wage
+
+		doc = frappe._dict(
+			company="_Test Company",
+			# LOP halved the paid amount, but the structure wage is still 20,000.
+			earnings=[frappe._dict(salary_component="Basic Salary", default_amount=20_000, amount=10_000)],
+		)
+
+		self.assertEqual(_compute_pf_wage(doc), 20_000)
+
+	def test_monthly_epf_base_applies_annual_ceiling(self):
+		"""
+		The base is resolved by annualising the structure PF wage, applying the
+		annual ceiling (₹15,000 × 12), then dividing back to a flat month.
+		"""
+		from india_payroll.india_payroll.epf import _compute_monthly_epf_base
+
+		# Below ceiling → base is the wage itself.
+		self.assertEqual(_compute_monthly_epf_base(12_000, contribute_on_actual=False), 12_000)
+		# Above ceiling, default → capped at the ceiling.
+		self.assertEqual(_compute_monthly_epf_base(25_000, contribute_on_actual=False), 15_000)
+		# Above ceiling, contribute-on-actual → full wage.
+		self.assertEqual(_compute_monthly_epf_base(25_000, contribute_on_actual=True), 25_000)
+
+	@HRMSTestSuite.change_settings(
+		"Payroll Settings",
+		{"enable_epf": 1, "enable_professional_tax": 0, "enable_esic": 0, "enable_lwf": 0},
+	)
+	def test_lop_prorates_epf(self):
+		"""
+		The ceiling is checked on the full-month structure wage, but the
+		contribution is prorated by payment_days / total_working_days: a 15/30
+		LOP month on a ₹15,000 wage deducts 12% × 15,000 × 15/30 = ₹900.
+		"""
+		from india_payroll.india_payroll.epf import apply_epf
+
+		gross = float(EPF_WAGE_CEILING)
+		_, slip = self._make_salary_slip(
+			"test_epf_below_ceiling@indiapayroll.com",
+			"Test EPF LOP Structure",
+			gross,
+		)
+		slip.process_salary_structure(for_preview=1)
+
+		# Half the month is LOP.
+		slip.total_working_days = 30
+		slip.payment_days = 15
+		apply_epf(slip)
+
+		self.assertEqual(self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT), 900)
+
+	@HRMSTestSuite.change_settings(
+		"Payroll Settings",
+		{"enable_epf": 1, "enable_professional_tax": 0, "enable_esic": 0, "enable_lwf": 0},
+	)
+	def test_above_ceiling_caps_before_lop_proration(self):
+		"""
+		Ordering check: the limit is applied to the full-month structure wage
+		first, and only the capped base is prorated for LOP.
+
+		₹25,000 wage, capped → ₹15,000 base, 15/30 LOP:
+		  12% × 15,000 × 15/30 = ₹900
+		(not 12% × min(25,000 × 15/30, 15,000) = ₹1,500).
+		"""
+		from india_payroll.india_payroll.epf import apply_epf
+
+		_, slip = self._make_salary_slip(
+			"test_epf_above_ceiling_capped@indiapayroll.com",
+			"Test EPF Ceiling LOP Structure",
+			25_000.0,
+		)
+		slip.process_salary_structure(for_preview=1)
+
+		slip.total_working_days = 30
+		slip.payment_days = 15
+		apply_epf(slip)
+
+		self.assertEqual(self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT), 900)
 
 	@HRMSTestSuite.change_settings(
 		"Payroll Settings",

@@ -52,6 +52,10 @@ ignore = [
 ]
 typing-modules = ["frappe.types.DF"]
 
+# The statutory-calculation docstrings are typeset prose (₹15,000 × 12), so the
+# multiplication sign is deliberate rather than a mistyped "x".
+allowed-confusables = ["×"]
+
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "tab"
