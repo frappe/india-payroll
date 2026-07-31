@@ -28,4 +28,4 @@ def get_effective_ssa_values(
 
 
 def get_slip_ssa_values(doc, fields: list[str]) -> "frappe._dict":
-	return get_effective_ssa_values(doc.employee, doc.company, doc.salary_structure, doc.start_date, fields)
+	return get_effective_ssa_values(doc.employee, doc.company, doc.salary_structure, doc.end_date, fields)
