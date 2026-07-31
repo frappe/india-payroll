@@ -71,17 +71,18 @@ def apply_epf(doc, method=None) -> None:
 		)
 		return
 
-	pf_wage = _compute_pf_wage(doc)
-	if pf_wage <= 0:
+	monthly_pf_wage = _compute_pf_wage(doc)
+	if monthly_pf_wage <= 0:
 		# Nothing to contribute on (e.g. no components flagged as PF wage)
 		_remove_epf_components(doc)
 		return
 
 	contribute_on_actual = bool(ssa.get("contribute_on_actual_pf_wage"))
-	pf_wage_capped = min(pf_wage, EPF_WAGE_CEILING)
-	epf_base = pf_wage if contribute_on_actual else pf_wage_capped
+	epf_base = _compute_monthly_epf_base(monthly_pf_wage, contribute_on_actual=contribute_on_actual)
 
-	employee_epf = _epfo_round(epf_base * EPF_EMPLOYEE_RATE)
+	# The ceiling test above uses the full-month structure base; the actual
+	# contribution is prorated for LOP (payment vs working days).
+	employee_epf = _epfo_round(epf_base * EPF_EMPLOYEE_RATE * _lop_factor(doc))
 	vpf = _compute_vpf(
 		doc,
 		epf_base,
@@ -108,7 +109,7 @@ def _required_components_exist() -> bool:
 
 def _compute_pf_wage(doc) -> float:
 	"""
-	Sum the PF-eligible earnings on the slip.
+	Sum the PF-eligible *structure* earnings on the slip (one month).
 
 	PF wage is *not* gross pay. Two categories of earning are excluded per
 	EPF statute (Sec. 2(b) excludes HRA; the EPFO circular excludes ad-hoc /
@@ -119,8 +120,10 @@ def _compute_pf_wage(doc) -> float:
 	    arrears and other one-off components), flagged by ``additional_salary``
 	    on the slip row.
 
-	Amounts on `doc.earnings` are already prorated for LOP / payment_days by
-	the Salary Slip controller, so the returned PF wage reflects NCP days.
+	Uses ``default_amount`` (the unprorated Salary Structure amount), not the
+	LOP-prorated ``amount``: the ceiling test is decided on the full structure
+	wage annualised over the year (see ``_compute_monthly_epf_base``), so a
+	high earner in an LOP month is not wrongly pulled below the ceiling.
 	"""
 	hra_component = frappe.db.get_value("Company", doc.company, "hra_component") if doc.company else None
 
@@ -132,9 +135,42 @@ def _compute_pf_wage(doc) -> float:
 		# Skip anything injected from an Additional Salary (bonuses/incentives).
 		if e.get("additional_salary"):
 			continue
-		total += flt(e.amount)
+		total += flt(e.default_amount)
 
 	return total
+
+
+def _compute_monthly_epf_base(monthly_pf_wage: float, *, contribute_on_actual: bool) -> float:
+	"""
+	Resolve the monthly EPF base from the full-year PF wage.
+
+	The ₹15,000 ceiling is a statutory wage limit; applying it month-by-month
+	against the actual paid wage lets LOP or mid-month variation distort the
+	base. Instead we annualise the structure PF wage, apply the annual ceiling
+	(₹15,000 × 12), then bring it back to a flat per-month base:
+
+	  • ``contribute_on_actual`` → base on the full annual PF wage.
+	  • otherwise                → base capped at the annual ceiling.
+
+	The result is the full-month base; LOP proration is applied to the
+	contribution by the caller (see ``_lop_factor``).
+	"""
+	annual_pf_wage = flt(monthly_pf_wage) * 12
+	annual_ceiling = EPF_WAGE_CEILING * 12
+	annual_base = annual_pf_wage if contribute_on_actual else min(annual_pf_wage, annual_ceiling)
+	return annual_base / 12
+
+
+def _lop_factor(doc) -> float:
+	"""Proration factor for LOP: paid days over total working days.
+
+	Falls back to 1.0 (no proration) when total working days is unavailable, so
+	the contribution is never divided by zero for a preview or a manual slip.
+	"""
+	total_days = flt(doc.total_working_days)
+	if total_days <= 0:
+		return 1.0
+	return flt(doc.payment_days) / total_days
 
 
 def _compute_vpf(doc, epf_base: float, *, vpf_mode=None, vpf_percentage=None, vpf_amount=None) -> float:
@@ -142,31 +178,30 @@ def _compute_vpf(doc, epf_base: float, *, vpf_mode=None, vpf_percentage=None, vp
 	Voluntary Provident Fund — additional employee contribution above 12 %.
 
 	The VPF election lives on the Salary Structure Assignment and is passed in
-	by the caller. Two modes (default Amount):
-	  • ``Amount`` — a fixed ``vpf_amount`` the employee elected per month,
-	    prorated by payment_days / total_working_days so LOP months don't
-	    over-deduct.
-	  • ``Percentage`` — ``vpf_percentage`` of the EPF base (which already
-	    follows the contribute-on-actual / capped rule and slip proration).
+	by the caller. Both modes prorate by payment_days / total_working_days so
+	LOP months don't over-deduct (``epf_base`` is the full-month base). Default
+	Amount mode:
+	  • ``Amount`` — a fixed ``vpf_amount`` the employee elected per month.
+	  • ``Percentage`` — ``vpf_percentage`` of the EPF base (which follows the
+	    contribute-on-actual / capped rule).
 
 	The employer does not match VPF.  Falls back to Amount mode when
 	``vpf_mode`` is unset (existing records before the field was added);
 	combined with vpf_amount defaulting to 0, this means no surprise VPF
 	deduction appears for employees who never opted in.
 	"""
+	factor = _lop_factor(doc)
+
 	if (vpf_mode or "Amount") == "Amount":
 		amount = flt(vpf_amount)
 		if amount <= 0:
 			return 0.0
-		total_days = flt(doc.total_working_days)
-		if total_days > 0:
-			amount = amount * flt(doc.payment_days) / total_days
-		return _epfo_round(amount)
+		return _epfo_round(amount * factor)
 
 	vpf_pct = flt(vpf_percentage)
 	if vpf_pct <= 0:
 		return 0.0
-	return _epfo_round(epf_base * vpf_pct / 100.0)
+	return _epfo_round(epf_base * vpf_pct / 100.0 * factor)
 
 
 def _apply_epf_components(doc, *, employee_epf: float, vpf: float) -> None:
