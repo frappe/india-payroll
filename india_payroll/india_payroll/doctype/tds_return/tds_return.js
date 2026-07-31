@@ -11,7 +11,89 @@ const VALIDATION_SETTLED = [
 	"Accepted",
 ];
 
+// Link field -> {field on Address/Contact: field on this return}. Kept in step with
+// ADDRESS_AND_CONTACT_MAP in tds_return.py, which fills the same gaps on save.
+const ADDRESS_AND_CONTACT_MAP = {
+	deductor_address: {
+		address_line1: "deductor_flat_door_block_number",
+		address_line2: "deductor_road_street",
+		county: "deductor_area_locality",
+		city: "deductor_district",
+		state: "deductor_state",
+		pincode: "deductor_postal_code",
+		country: "deductor_country",
+	},
+	deductor_contact: {
+		email_id: "deductor_email",
+		mobile_no: "deductor_contact_number",
+	},
+	responsible_person_contact: {
+		full_name: "responsible_person_name",
+		designation: "responsible_person_designation",
+		email_id: "rp_email",
+		mobile_no: "rp_contact_number",
+	},
+	rp_address: {
+		address_line1: "rp_flat_door_block_number",
+		address_line2: "rp_road_street",
+		county: "rp_area_locality",
+		city: "rp_district",
+		state: "rp_state",
+		pincode: "rp_postal_code",
+		country: "rp_country",
+	},
+};
+
+function pull_linked_details(frm, link_field) {
+	const source = frm.doc[link_field];
+	const mapping = ADDRESS_AND_CONTACT_MAP[link_field];
+	if (!source || !mapping) return;
+
+	const doctype = link_field.includes("address") ? "Address" : "Contact";
+	frappe.db.get_doc(doctype, source).then((record) => {
+		// Selecting a record replaces what it covers; fields it cannot supply
+		// (post office, PAN, deductor type) are left untouched.
+		Object.entries(mapping).forEach(([from, to]) => {
+			frm.set_value(to, record[from] || "");
+		});
+	});
+}
+
+function company_link_query(frm, doctype) {
+	const method =
+		doctype === "Address"
+			? "frappe.contacts.doctype.address.address.address_query"
+			: "frappe.contacts.doctype.contact.contact.contact_query";
+	return {
+		query: method,
+		filters: { link_doctype: "Company", link_name: frm.doc.company },
+	};
+}
+
 frappe.ui.form.on("TDS Return", {
+	setup(frm) {
+		frm.set_query("deductor_address", () => company_link_query(frm, "Address"));
+		frm.set_query("rp_address", () => company_link_query(frm, "Address"));
+		frm.set_query("deductor_contact", () => company_link_query(frm, "Contact"));
+		frm.set_query("responsible_person_contact", () => company_link_query(frm, "Contact"));
+	},
+
+	deductor_address(frm) {
+		pull_linked_details(frm, "deductor_address");
+	},
+
+	deductor_contact(frm) {
+		pull_linked_details(frm, "deductor_contact");
+	},
+
+	responsible_person_contact(frm) {
+		pull_linked_details(frm, "responsible_person_contact");
+	},
+
+	rp_address(frm) {
+		pull_linked_details(frm, "rp_address");
+	},
+
 	refresh(frm) {
 		if (frm.is_new()) return;
 

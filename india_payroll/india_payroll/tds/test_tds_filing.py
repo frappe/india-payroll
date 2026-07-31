@@ -4,6 +4,7 @@
 import json
 import os
 import re
+from typing import ClassVar
 from unittest.mock import patch
 
 import frappe
@@ -612,6 +613,91 @@ def validate_workbook(book, schema):
 			else:
 				_check_table_block(block, block_spec, where, errors)
 	return errors
+
+
+class TestAddressAndContactMapping(FrappeTestCase):
+	"""Selecting an Address/Contact must cover every payer field it can."""
+
+	@staticmethod
+	def _map():
+		from india_payroll.india_payroll.doctype.tds_return.tds_return import (
+			ADDRESS_AND_CONTACT_MAP,
+		)
+
+		return ADDRESS_AND_CONTACT_MAP
+
+	def test_sources_exist_on_the_linked_doctypes(self):
+		for link_field, mapping in self._map().items():
+			doctype = "Address" if "address" in link_field else "Contact"
+			meta = frappe.get_meta(doctype)
+			for source in mapping:
+				self.assertTrue(meta.get_field(source), f"{doctype}.{source} missing")
+
+	def test_targets_exist_on_the_return(self):
+		meta = frappe.get_meta("TDS Return")
+		for link_field, mapping in self._map().items():
+			self.assertTrue(meta.get_field(link_field), f"{link_field} missing")
+			for target in mapping.values():
+				self.assertTrue(meta.get_field(target), f"TDS Return.{target} missing")
+
+	def test_no_target_is_written_by_two_sources(self):
+		for link_field, mapping in self._map().items():
+			targets = list(mapping.values())
+			self.assertEqual(len(targets), len(set(targets)), f"{link_field} maps twice")
+
+	# Schema column -> unprefixed field on the return. form24q and form138 name the
+	# same address parts differently, so both vocabularies are spelled out.
+	SCHEMA_KEY_TO_FIELD: ClassVar[dict[str, str]] = {
+		"flat_door_block_number": "flat_door_block_number",
+		"road_street_block_sector": "road_street",
+		"street": "road_street",
+		"area_locality": "area_locality",
+		"area": "area_locality",
+		"district": "district",
+		"city": "district",
+		"state": "state",
+		"postal_code": "postal_code",
+		"country": "country",
+		"email": "email",
+		"contact_number": "contact_number",
+		"mobile": "contact_number",
+		"designation": "designation",
+		"name": "name",
+	}
+
+	# No Address or Contact record carries these; they stay manual entries. The
+	# deductor's legal name comes from the return (or the Company), not an Address —
+	# but the responsible person's name does come from their Contact.
+	MANUAL_KEYS: ClassVar[dict[str, set[str]]] = {
+		"payer_list": {
+			"tan",
+			"pan",
+			"name",
+			"branch",
+			"post_office",
+			"deductor_type",
+			"gstin",
+			"contact_country_code",
+		},
+		"responsible_person_list": {"pan", "post_office", "contact_country_code"},
+	}
+
+	def test_mandatory_payer_fields_are_covered(self):
+		"""Everything the schema demands is either pulled from a link, or knowingly manual."""
+		mapped = {target for mapping in self._map().values() for target in mapping.values()}
+
+		for workbook in ("form138_workbook", "form24q_workbook"):
+			for block in ("payer_list", "responsible_person_list"):
+				prefixes = ("deductor_",) if block == "payer_list" else ("rp_", "responsible_person_")
+				for key in sheet_json.mandatory_payer_fields(workbook, block):
+					if key in self.MANUAL_KEYS[block]:
+						continue
+					suffix = self.SCHEMA_KEY_TO_FIELD.get(key, key)
+					candidates = {f"{prefix}{suffix}" for prefix in prefixes}
+					self.assertTrue(
+						candidates & mapped,
+						f"{workbook}/{block}/{key} is neither mapped nor listed as manual",
+					)
 
 
 class TestChallanMonthMapping(FrappeTestCase):
