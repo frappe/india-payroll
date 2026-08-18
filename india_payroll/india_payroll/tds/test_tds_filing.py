@@ -11,7 +11,9 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import getdate
 
+from india_payroll.boot import set_bootinfo
 from india_payroll.india_payroll.tds import data_assembly, filing, sheet_json
+from india_payroll.india_payroll.tds import settings as tds_settings
 from india_payroll.india_payroll.tds.data_assembly import quarter_range_from_start
 from india_payroll.india_payroll.tds.sandbox_client import (
 	SandboxTDSClient,
@@ -1169,3 +1171,134 @@ class TestFvuZipHandling(FrappeTestCase):
 
 	def test_non_zip_payload_is_tolerated(self):
 		self.assertIsNone(filing._extract_from_zip(b"not-a-zip", ".fvu"))
+
+
+class TestCredentialResolution(FrappeTestCase):
+	"""Sandbox credentials resolve from Payroll Settings or from site config.
+
+	A site provisioned by Frappe Cloud gets the pair through site config; any
+	other site enters its own. Each case runs against a stub settings object so
+	the real Payroll Settings singleton is left alone.
+	"""
+
+	CONF_KEYS: ClassVar = (
+		tds_settings.CONF_API_KEY,
+		tds_settings.CONF_API_SECRET,
+		tds_settings.CONF_SANDBOX_MODE,
+		tds_settings.CONF_API_VERSION,
+	)
+
+	def setUp(self):
+		self.saved_conf = {key: frappe.conf.get(key) for key in self.CONF_KEYS}
+		self.clear_conf()
+
+	def tearDown(self):
+		self.clear_conf()
+		for key, value in self.saved_conf.items():
+			if value is not None:
+				frappe.conf[key] = value
+
+	def clear_conf(self):
+		for key in self.CONF_KEYS:
+			frappe.conf.pop(key, None)
+
+	def set_conf(self, **values):
+		for key, value in values.items():
+			frappe.conf[key] = value
+
+	def stub_settings(self, **values):
+		"""A stand-in for Payroll Settings that answers get()/get_password()."""
+		settings = frappe._dict(values)
+		settings.get_password = lambda fieldname, raise_exception=True: values.get(fieldname)
+		return settings
+
+	def test_site_credentials_are_used_when_present(self):
+		self.set_conf(ip_tds_api_key="key_test_CLOUD", ip_tds_api_secret="cloud")
+		settings = self.stub_settings(tds_api_key="key_live_SITE", tds_api_secret="site", tds_sandbox_mode=0)
+
+		credentials = tds_settings.get_sandbox_credentials(settings)
+		self.assertEqual(credentials["api_key"], "key_live_SITE")
+		self.assertEqual(credentials["api_secret"], "site")
+		self.assertFalse(credentials["from_conf"])
+
+	def test_conf_credentials_are_the_fallback(self):
+		self.set_conf(ip_tds_api_key="key_test_CLOUD", ip_tds_api_secret="cloud")
+
+		credentials = tds_settings.get_sandbox_credentials(self.stub_settings())
+		self.assertEqual(credentials["api_key"], "key_test_CLOUD")
+		self.assertEqual(credentials["api_secret"], "cloud")
+		self.assertTrue(credentials["from_conf"])
+
+	def test_half_filled_site_pair_does_not_mix_with_conf(self):
+		# Pairing a site key with a cloud secret would fail auth confusingly.
+		self.set_conf(ip_tds_api_key="key_test_CLOUD", ip_tds_api_secret="cloud")
+		settings = self.stub_settings(tds_api_key="key_live_SITE")
+
+		credentials = tds_settings.get_sandbox_credentials(settings)
+		self.assertEqual(credentials["api_key"], "key_test_CLOUD")
+		self.assertEqual(credentials["api_secret"], "cloud")
+		self.assertTrue(credentials["from_conf"])
+
+	def test_sandbox_mode_inferred_from_conf_key_prefix(self):
+		self.set_conf(ip_tds_api_key="key_test_CLOUD", ip_tds_api_secret="cloud")
+		self.assertEqual(tds_settings.get_sandbox_credentials(self.stub_settings())["sandbox_mode"], 1)
+
+		self.set_conf(ip_tds_api_key="key_live_CLOUD")
+		self.assertEqual(tds_settings.get_sandbox_credentials(self.stub_settings())["sandbox_mode"], 0)
+
+	def test_explicit_conf_sandbox_mode_overrides_the_prefix(self):
+		self.set_conf(ip_tds_api_key="key_live_CLOUD", ip_tds_api_secret="cloud", ip_tds_sandbox_mode=1)
+		self.assertEqual(tds_settings.get_sandbox_credentials(self.stub_settings())["sandbox_mode"], 1)
+
+		self.set_conf(ip_tds_api_key="key_test_CLOUD", ip_tds_sandbox_mode=0)
+		self.assertEqual(tds_settings.get_sandbox_credentials(self.stub_settings())["sandbox_mode"], 0)
+
+	def test_can_enable_requires_a_complete_pair(self):
+		self.assertFalse(tds_settings.can_enable_tds_filing(self.stub_settings()))
+		self.assertFalse(tds_settings.can_enable_tds_filing(self.stub_settings(tds_api_key="key_test_SITE")))
+		self.assertTrue(
+			tds_settings.can_enable_tds_filing(
+				self.stub_settings(tds_api_key="key_test_SITE", tds_api_secret="site")
+			)
+		)
+
+	def test_conf_pair_alone_allows_enabling(self):
+		self.assertFalse(tds_settings.can_enable_tds_filing(self.stub_settings()))
+
+		self.set_conf(ip_tds_api_key="key_test_CLOUD", ip_tds_api_secret="cloud")
+		self.assertTrue(tds_settings.has_conf_credentials())
+		self.assertTrue(tds_settings.can_enable_tds_filing(self.stub_settings()))
+
+	def test_incomplete_conf_pair_is_ignored(self):
+		self.set_conf(ip_tds_api_key="key_test_CLOUD")
+		self.assertFalse(tds_settings.has_conf_credentials())
+		self.assertFalse(tds_settings.can_enable_tds_filing(self.stub_settings()))
+
+	def test_is_enabled_needs_both_the_switch_and_a_credential(self):
+		with_pair = {"tds_api_key": "key_test_SITE", "tds_api_secret": "site"}
+		self.assertFalse(tds_settings.is_tds_filing_enabled(self.stub_settings(**with_pair)))
+		self.assertFalse(tds_settings.is_tds_filing_enabled(self.stub_settings(enable_tds_filing=1)))
+		self.assertTrue(
+			tds_settings.is_tds_filing_enabled(self.stub_settings(enable_tds_filing=1, **with_pair))
+		)
+
+	def test_enabling_without_a_credential_is_refused(self):
+		doc = self.stub_settings(enable_tds_filing=1)
+		doc.has_value_changed = lambda fieldname: True
+
+		self.assertRaises(frappe.ValidationError, tds_settings.validate_tds_filing_settings, doc)
+
+		self.set_conf(ip_tds_api_key="key_test_CLOUD", ip_tds_api_secret="cloud")
+		tds_settings.validate_tds_filing_settings(doc)
+
+	def test_bootinfo_reports_the_credential_source(self):
+		bootinfo = {}
+		set_bootinfo(bootinfo)
+		self.assertFalse(bootinfo["ip_tds_credentials_from_conf"])
+		self.assertEqual(bootinfo["ip_tds_sandbox_mode_from_conf"], 0)
+
+		self.set_conf(ip_tds_api_key="key_test_CLOUD", ip_tds_api_secret="cloud")
+		bootinfo = {}
+		set_bootinfo(bootinfo)
+		self.assertTrue(bootinfo["ip_tds_credentials_from_conf"])
+		self.assertEqual(bootinfo["ip_tds_sandbox_mode_from_conf"], 1)

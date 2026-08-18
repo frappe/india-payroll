@@ -37,7 +37,7 @@ add_to_workspace_dock = [
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/india_payroll/css/india_payroll.css"
-# app_include_js = "/assets/india_payroll/js/india_payroll.js"
+app_include_js = "/assets/india_payroll/js/india_payroll.js"
 
 # include js, css files in header of web template
 # web_include_css = "/assets/india_payroll/css/india_payroll.css"
@@ -63,6 +63,11 @@ doctype_list_js = {"Salary Structure Assignment": "public/js/salary_structure_as
 # ------------------
 # include app icons in desk
 # app_include_icons = "india_payroll/public/icons.svg"
+
+# Boot
+# ----
+
+boot_session = "india_payroll.boot.set_bootinfo"
 
 # Home Pages
 # ----------
@@ -193,7 +198,10 @@ doc_events = {
 		"validate": "india_payroll.india_payroll.professional_tax.validate_employment_state",
 	},
 	"Payroll Settings": {
-		"validate": "india_payroll.india_payroll.tds.settings.clear_token_cache_on_change",
+		"validate": [
+			"india_payroll.india_payroll.tds.settings.validate_tds_filing_settings",
+			"india_payroll.india_payroll.tds.settings.clear_token_cache_on_change",
+		],
 	},
 	"Company": {
 		"validate": "india_payroll.india_payroll.tds.settings.validate_deductor_details",
