@@ -13,10 +13,13 @@ from hrms.payroll.doctype.salary_structure.test_salary_structure import (
 from hrms.tests.utils import HRMSTestSuite
 
 from india_payroll.india_payroll.esi import (
+	EMPLOYEE_ESI_RATE,
+	EMPLOYER_ESI_RATE,
 	ESI_EMPLOYEE_COMPONENT,
-	ESI_RATE,
+	ESI_EMPLOYER_COMPONENT,
 	ESI_WAGE_CEILING,
 	ESI_WAGE_CEILING_DISABILITY,
+	get_esi_split,
 )
 from india_payroll.install import create_esi_components
 
@@ -160,7 +163,8 @@ class TestESI(HRMSTestSuite):
 	def test_eligible_employee_esi_applied(self):
 		"""
 		An employee whose gross wages are below the ₹21,000 ceiling should
-		have an ESI deduction row (4% of gross) injected on the salary slip.
+		have an employee ESI deduction row (0.75% of gross) and an employer
+		contribution row (3.25% of gross) injected on the salary slip.
 		"""
 		gross = 15_000.0
 		_, salary_slip = self._make_salary_slip(
@@ -174,8 +178,13 @@ class TestESI(HRMSTestSuite):
 
 		self.assertEqual(len(emp_rows), 1, "Employee ESI deduction row must be present")
 
-		expected_emp = flt(gross * ESI_RATE, 2)  # 600.0
-		self.assertAlmostEqual(emp_rows[0].amount, expected_emp, places=2)
+		self.assertAlmostEqual(emp_rows[0].amount, flt(gross * EMPLOYEE_ESI_RATE, 2), places=2)  # 112.50
+
+		employer_rows = [
+			d for d in salary_slip.employer_contributions if d.salary_component == ESI_EMPLOYER_COMPONENT
+		]
+		self.assertEqual(len(employer_rows), 1, "Employer ESI contribution row must be present")
+		self.assertAlmostEqual(employer_rows[0].amount, flt(gross * EMPLOYER_ESI_RATE, 2), places=2)  # 487.50
 
 	@HRMSTestSuite.change_settings("Payroll Settings", {"enable_esic": 1})
 	def test_employee_at_exact_ceiling_is_eligible(self):
@@ -194,8 +203,7 @@ class TestESI(HRMSTestSuite):
 		emp_rows = [d for d in salary_slip.deductions if d.salary_component == ESI_EMPLOYEE_COMPONENT]
 		self.assertEqual(len(emp_rows), 1, "Employee at exact ceiling must be eligible")
 
-		expected_emp = flt(gross * ESI_RATE, 2)  # 840.0
-		self.assertAlmostEqual(emp_rows[0].amount, expected_emp, places=2)
+		self.assertAlmostEqual(emp_rows[0].amount, flt(gross * EMPLOYEE_ESI_RATE, 2), places=2)  # 157.50
 
 	@HRMSTestSuite.change_settings("Payroll Settings", {"enable_esic": 1})
 	def test_employee_above_ceiling_no_esi(self):
@@ -211,8 +219,8 @@ class TestESI(HRMSTestSuite):
 		)
 		salary_slip.insert()
 
-		esi_rows = [d for d in salary_slip.deductions if d.salary_component == ESI_EMPLOYEE_COMPONENT]
-		self.assertEqual(len(esi_rows), 0, "Employee above ceiling must not have ESI rows")
+		self.assertEqual(len(self._esi_rows(salary_slip)), 0, "Employee above ceiling must not have ESI rows")
+		self.assertEqual(len(self._employer_esi_rows(salary_slip)), 0)
 
 	@HRMSTestSuite.change_settings("Payroll Settings", {"enable_esic": 1})
 	def test_person_with_disability_uses_higher_ceiling(self):
@@ -238,7 +246,7 @@ class TestESI(HRMSTestSuite):
 			"Person with disability earning 23,000 must be eligible (ceiling is 25,000)",
 		)
 
-		expected_emp = flt(gross * ESI_RATE, 2)  # 920.0
+		expected_emp = flt(gross * EMPLOYEE_ESI_RATE, 2)  # 172.50
 		self.assertAlmostEqual(emp_rows[0].amount, expected_emp, places=2)
 
 	@HRMSTestSuite.change_settings("Payroll Settings", {"enable_esic": 1})
@@ -257,8 +265,10 @@ class TestESI(HRMSTestSuite):
 
 		salary_slip.insert()
 
-		esi_rows = [d for d in salary_slip.deductions if d.salary_component == ESI_EMPLOYEE_COMPONENT]
-		self.assertEqual(len(esi_rows), 0, "Person with disability above 25,000 must not have ESI rows")
+		self.assertEqual(
+			len(self._esi_rows(salary_slip)), 0, "Person with disability above 25,000 must not have ESI rows"
+		)
+		self.assertEqual(len(self._employer_esi_rows(salary_slip)), 0)
 
 	@HRMSTestSuite.change_settings("Payroll Settings", {"enable_esic": 0})
 	def test_esi_not_applied_when_disabled(self):
@@ -274,13 +284,16 @@ class TestESI(HRMSTestSuite):
 		)
 		salary_slip.insert()
 
-		esi_rows = [d for d in salary_slip.deductions if d.salary_component == ESI_EMPLOYEE_COMPONENT]
-		self.assertEqual(len(esi_rows), 0, "ESI must not be applied when setting is disabled")
+		self.assertEqual(
+			len(self._esi_rows(salary_slip)), 0, "ESI must not be applied when setting is disabled"
+		)
+		self.assertEqual(len(self._employer_esi_rows(salary_slip)), 0)
 
 	@HRMSTestSuite.change_settings("Payroll Settings", {"enable_esic": 1})
 	def test_net_pay_reduced_by_employee_esi(self):
 		"""
-		Net pay must be reduced exactly by the full ESI amount (4% of gross).
+		Net pay must be reduced by the employee's 0.75% share only. The employer's
+		3.25% sits in employer_contributions and must not touch gross or net.
 		"""
 		gross = 20_000.0
 		_, salary_slip = self._make_salary_slip(
@@ -290,18 +303,24 @@ class TestESI(HRMSTestSuite):
 		)
 		salary_slip.insert()
 
-		expected_esi = flt(gross * ESI_RATE, 2)  # 800.0
+		expected_employee = flt(gross * EMPLOYEE_ESI_RATE, 2)  # 150.0
 		self.assertAlmostEqual(
 			salary_slip.net_pay,
-			gross - expected_esi,
+			gross - expected_employee,
 			places=2,
-			msg="net_pay must equal gross_pay minus ESI",
+			msg="net_pay must equal gross_pay minus the employee ESI share",
 		)
+		self.assertAlmostEqual(salary_slip.gross_pay, gross, places=2)
+
+		employer_rows = [
+			d for d in salary_slip.employer_contributions if d.salary_component == ESI_EMPLOYER_COMPONENT
+		]
+		self.assertAlmostEqual(employer_rows[0].amount, flt(gross * EMPLOYER_ESI_RATE, 2), places=2)  # 650.0
 
 		emp_esi_in_deduction = sum(
 			flt(d.amount) for d in salary_slip.deductions if d.salary_component == ESI_EMPLOYEE_COMPONENT
 		)
-		self.assertAlmostEqual(emp_esi_in_deduction, expected_esi, places=2)
+		self.assertAlmostEqual(emp_esi_in_deduction, expected_employee, places=2)
 
 	def _make_lop_salary_slip(self, email: str, structure_name: str, base: float):
 		"""Build (uninserted) a salary slip whose single earning prorates with payment
@@ -330,6 +349,10 @@ class TestESI(HRMSTestSuite):
 	@staticmethod
 	def _esi_rows(slip):
 		return [d for d in slip.deductions if d.salary_component == ESI_EMPLOYEE_COMPONENT]
+
+	@staticmethod
+	def _employer_esi_rows(slip):
+		return [d for d in slip.employer_contributions if d.salary_component == ESI_EMPLOYER_COMPONENT]
 
 	@HRMSTestSuite.change_settings("Payroll Settings", {"enable_esic": 1})
 	def test_eligibility_uses_full_gross_not_prorated(self):
@@ -371,14 +394,52 @@ class TestESI(HRMSTestSuite):
 		)
 		slip.insert()
 
-		# Full month: ESI on 20,000 = 800.
-		self.assertAlmostEqual(self._esi_rows(slip)[0].amount, flt(20_000 * ESI_RATE, 2), places=2)
+		# Full month: employee ESI on 20,000 = 150.
+		self.assertAlmostEqual(self._esi_rows(slip)[0].amount, flt(20_000 * EMPLOYEE_ESI_RATE, 2), places=2)
 
 		# Half-month LOP: still covered (full gross 20,000 ≤ ceiling), contribution on
-		# the 10,000 actually paid → 400.
+		# the 10,000 actually paid → 75.
 		slip.total_working_days = 30
 		slip.payment_days = 15
 		slip.calculate_net_pay()
 
 		self.assertAlmostEqual(slip.gross_pay, 10_000, places=2)
-		self.assertAlmostEqual(self._esi_rows(slip)[0].amount, flt(10_000 * ESI_RATE, 2), places=2)
+		self.assertAlmostEqual(self._esi_rows(slip)[0].amount, flt(10_000 * EMPLOYEE_ESI_RATE, 2), places=2)
+
+	def test_get_esi_split_shares_sum_to_four_percent(self):
+		split = get_esi_split(20_000)
+
+		self.assertTrue(split.covered)
+		self.assertAlmostEqual(split.employee, 150.0, places=2)
+		self.assertAlmostEqual(split.employer, 650.0, places=2)
+		self.assertAlmostEqual(split.total, 800.0, places=2)
+
+	def test_get_esi_split_ceiling_is_inclusive(self):
+		self.assertTrue(get_esi_split(ESI_WAGE_CEILING).covered)
+		self.assertFalse(get_esi_split(ESI_WAGE_CEILING + 1).covered)
+
+		self.assertTrue(get_esi_split(ESI_WAGE_CEILING_DISABILITY, is_person_with_disability=True).covered)
+		self.assertFalse(
+			get_esi_split(ESI_WAGE_CEILING_DISABILITY + 1, is_person_with_disability=True).covered
+		)
+
+	def test_get_esi_split_not_covered_is_all_zero(self):
+		split = get_esi_split(ESI_WAGE_CEILING + 1)
+
+		self.assertFalse(split.covered)
+		self.assertEqual(split.employee, 0.0)
+		self.assertEqual(split.employer, 0.0)
+		self.assertEqual(split.total, 0.0)
+
+	def test_get_esi_split_ceiling_gross_decides_coverage(self):
+		"""Coverage follows ``ceiling_gross`` while the contribution follows ``gross``.
+
+		This is what keeps an LOP month honest: a 22,000 earner paid 10,000 stays
+		out of ESI, and a 20,000 earner paid 10,000 contributes on the 10,000.
+		"""
+		self.assertFalse(get_esi_split(10_000, ceiling_gross=22_000).covered)
+
+		split = get_esi_split(10_000, ceiling_gross=20_000)
+		self.assertTrue(split.covered)
+		self.assertAlmostEqual(split.employee, 75.0, places=2)
+		self.assertAlmostEqual(split.employer, 325.0, places=2)

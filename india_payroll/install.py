@@ -641,18 +641,15 @@ def create_professional_tax_component():
 
 def create_esi_components():
 	"""
-	Create the Employee State Insurance salary component if it does not
+	Create the two Employee State Insurance salary components if they do not
 	already exist.
 
-	Only the employee's deduction (0.75 %) is tracked as a salary component.
-	The employer's contribution (3.25 %) is part of the CTC and is not shown
-	as a separate component on the salary slip.
+	The employee's 0.75 % is a deduction that reduces net pay. The employer's
+	3.25 % uses the "Employer Contribution" component type: it is a cost the
+	employer bears on top of gross, shown on the salary slip for transparency
+	without affecting gross, total deduction or net pay.
 	"""
-	if frappe.db.exists("Salary Component", "Employee State Insurance"):
-		return
-
-	doc = frappe.new_doc("Salary Component")
-	doc.update(
+	components = [
 		{
 			"salary_component": "Employee State Insurance",
 			"salary_component_abbr": "ESI",
@@ -662,9 +659,26 @@ def create_esi_components():
 				"Employee's contribution to the Employee State Insurance scheme "
 				"at 0.75% of gross wages (ESI Act, 1948)."
 			),
-		}
-	)
-	doc.insert(ignore_permissions=True)
+		},
+		{
+			"salary_component": "Employer State Insurance",
+			"salary_component_abbr": "ERESI",
+			"type": "Employer Contribution",
+			"description": (
+				"Employer's contribution to the Employee State Insurance scheme "
+				"at 3.25% of gross wages (ESI Act, 1948). Part of CTC; does not "
+				"reduce net pay."
+			),
+		},
+	]
+
+	for component in components:
+		if frappe.db.exists("Salary Component", component["salary_component"]):
+			continue
+
+		doc = frappe.new_doc("Salary Component")
+		doc.update(component)
+		doc.insert(ignore_permissions=True)
 
 
 def create_lwf_component():

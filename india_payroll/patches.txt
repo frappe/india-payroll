@@ -12,3 +12,4 @@ india_payroll.patches.v1_0.remove_tax_regime_selector_from_tax_benefits
 india_payroll.patches.v1_0.move_statutory_config_to_salary_structure_assignment
 india_payroll.patches.v1_0.consolidate_employee_india_payroll_section #2
 india_payroll.patches.v1_0.set_tds_sandbox_mode_from_conf
+india_payroll.patches.v1_0.add_employer_esi_component
