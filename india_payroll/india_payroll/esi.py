@@ -15,13 +15,10 @@ ESI_WAGE_CEILING_DISABILITY = 25_000
 
 
 def get_esi_split(gross, *, is_person_with_disability=False, ceiling_gross=None) -> frappe._dict:
-	"""
-	Split the ESI contribution on ``gross`` into the employee and employer shares.
+	"""Split ESI on ``gross`` into the employee and employer shares.
 
-	``ceiling_gross`` decides coverage when it differs from the wage the
-	contribution is levied on — the salary slip judges coverage on the full
-	monthly gross but contributes on the LOP-prorated wage. Callers with a
-	single wage (the CTC hook, the register) omit it.
+	``ceiling_gross`` decides coverage when it differs from the wage levied on -
+	the slip judges coverage on full gross but contributes on the paid wage.
 	"""
 	gross = flt(gross)
 	ceiling = ESI_WAGE_CEILING_DISABILITY if is_person_with_disability else ESI_WAGE_CEILING
@@ -43,18 +40,11 @@ def get_esi_split(gross, *, is_person_with_disability=False, ceiling_gross=None)
 
 
 def apply_esi(doc, method=None) -> None:
-	"""
-	Salary Slip regional hook (see apply_regional_deductions).
+	"""Deduct the employee's 0.75% ESI share.
 
-	Injects the employee's ESI share (0.75%) as a deduction and the employer's
-	share (3.25%) as an employer contribution, when the employee's wage is
-	within the prescribed ceiling; otherwise removes any previously injected
-	ESI rows.
-
-	Coverage (the wage-ceiling test) is decided on the *full* monthly gross from
-	the structure assignment — not the payment-days-prorated ``doc.gross_pay`` —
-	so a high earner is not wrongly pulled into ESI in an LOP month. The
-	contribution itself is still levied on the actual wages paid (``gross_pay``).
+	Coverage is judged on full gross so LOP cannot pull a high earner into ESI,
+	while the contribution follows the wage actually paid. The employer's 3.25%
+	is written by ``employer_contributions``.
 	"""
 	if not is_statutory_enabled("esic", doc.company):
 		_remove_esi_components(doc)
@@ -66,17 +56,16 @@ def apply_esi(doc, method=None) -> None:
 	if not _required_components_exist():
 		return
 
-	# Determine the applicable wage ceiling (PwD flag lives on the assignment)
+	# the PwD flag decides which ceiling applies
 	is_disabled = get_slip_ssa_values(doc, ["is_person_with_disability"]).get("is_person_with_disability")
 
 	split = get_esi_split(
 		doc.gross_pay,
 		is_person_with_disability=bool(is_disabled),
-		ceiling_gross=_full_gross(doc),
+		ceiling_gross=esi_gross(doc.earnings, "default_amount"),
 	)
 
 	if not split.covered:
-		# Wage above the ceiling — not covered. Strip any stale ESI rows.
 		_remove_esi_components(doc)
 		return
 
@@ -103,36 +92,42 @@ def _required_components_exist() -> bool:
 	return False
 
 
-def _full_gross(doc) -> float:
-	"""Full, unprorated gross for the period — the gross the structure assignment
-	yields with no LOP.
+def esi_gross(earnings, field="amount") -> float:
+	"""ESI is levied on gross wages: every payable earning.
+
+	``amount`` is the wage paid, ``default_amount`` the full cycle with no LOP.
 	"""
-	return sum(flt(e.default_amount) for e in doc.earnings if not e.do_not_include_in_total)
+	return sum(
+		flt(row.get(field))
+		for row in earnings
+		if not row.get("statistical_component") and not row.get("do_not_include_in_total")
+	)
 
 
 def _remove_esi_components(doc) -> None:
-	"""Remove both ESI rows from the salary slip."""
+	"""Remove the employee ESI row from the salary slip."""
 	doc.deductions = [d for d in doc.deductions if d.salary_component != ESI_EMPLOYEE_COMPONENT]
-	doc.employer_contributions = [
-		d for d in doc.employer_contributions if d.salary_component != ESI_EMPLOYER_COMPONENT
-	]
 
 
 def _update_esi_in_salary_slip(doc, split) -> None:
-	"""
-	Replace any existing ESI rows with the freshly computed shares.
-
-	The employee's 0.75% reduces net pay; the employer's 3.25% is a cost the
-	employer bears on top of gross and is shown on the slip for transparency
-	without affecting gross, total deduction or net pay.
-	"""
+	"""Replace any existing employee ESI row with the freshly computed share."""
 	_remove_esi_components(doc)
 
 	if split.employee > 0:
 		doc.append("deductions", {"salary_component": ESI_EMPLOYEE_COMPONENT, "amount": split.employee})
 
-	if split.employer > 0:
-		doc.append(
-			"employer_contributions",
-			{"salary_component": ESI_EMPLOYER_COMPONENT, "amount": split.employer},
-		)
+
+def get_employer_contributions(earnings, config, *, paid_field="amount") -> dict:
+	"""Employer ESI, keyed by component.
+
+	Returns zero rather than omitting it, so a stale row gets cleared.
+	"""
+	if not frappe.db.get_single_value("Payroll Settings", "enable_esic"):
+		return {ESI_EMPLOYER_COMPONENT: 0.0}
+
+	split = get_esi_split(
+		esi_gross(earnings, paid_field),
+		is_person_with_disability=bool(config.get("is_person_with_disability")),
+		ceiling_gross=esi_gross(earnings, "default_amount"),
+	)
+	return {ESI_EMPLOYER_COMPONENT: split.employer}

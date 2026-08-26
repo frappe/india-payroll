@@ -394,11 +394,11 @@ class TestESI(HRMSTestSuite):
 		)
 		slip.insert()
 
-		# Full month: employee ESI on 20,000 = 150.
+		# full month: employee ESI on 20,000 = 150
 		self.assertAlmostEqual(self._esi_rows(slip)[0].amount, flt(20_000 * EMPLOYEE_ESI_RATE, 2), places=2)
 
 		# Half-month LOP: still covered (full gross 20,000 ≤ ceiling), contribution on
-		# the 10,000 actually paid → 75.
+		# the 10,000 actually paid = 75
 		slip.total_working_days = 30
 		slip.payment_days = 15
 		slip.calculate_net_pay()

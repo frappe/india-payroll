@@ -272,6 +272,7 @@ regional_overrides = {
 	"India": {
 		"hrms.payroll.doctype.income_tax_slab.income_tax_slab.apply_surcharge_with_marginal_relief": "india_payroll.india_payroll.income_tax_utils.apply_surcharge_with_marginal_relief",
 		"hrms.payroll.doctype.salary_slip.salary_slip.apply_regional_deductions": "india_payroll.india_payroll.salary_slip.apply_regional_deductions",
+		"hrms.payroll.doctype.salary_structure_assignment.salary_structure_assignment.apply_regional_ctc_components": "india_payroll.india_payroll.employer_contributions.apply_regional_ctc_components",
 	}
 }
 

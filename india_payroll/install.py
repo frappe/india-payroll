@@ -641,13 +641,10 @@ def create_professional_tax_component():
 
 def create_esi_components():
 	"""
-	Create the two Employee State Insurance salary components if they do not
-	already exist.
+	Create the two Employee State Insurance salary components.
 
-	The employee's 0.75 % is a deduction that reduces net pay. The employer's
-	3.25 % uses the "Employer Contribution" component type: it is a cost the
-	employer bears on top of gross, shown on the salary slip for transparency
-	without affecting gross, total deduction or net pay.
+	The employee's 0.75 % reduces net pay; the employer's 3.25 % is a cost borne
+	on top of gross and does not.
 	"""
 	components = [
 		{
