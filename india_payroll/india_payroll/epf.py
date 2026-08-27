@@ -1,6 +1,8 @@
 # Copyright (c) 2026, Frappe Technologies Pvt. Ltd. and contributors
 # License: GNU General Public License v3. See license.txt
 
+import re
+
 import frappe
 from frappe.utils import flt
 
@@ -26,6 +28,28 @@ EPS_RATE = 0.0833  # employer's pension diversion
 EDLI_RATE = 0.005  # employer's EDLI premium
 EPF_ADMIN_RATE = 0.005  # employer's EPF admin charges
 
+PF_WAGE_COMPONENT_PATTERNS = (
+	r"\bbasic\b",  # Basic, Basic Salary, Basic Pay, Basic Wages, Basic + DA
+	r"\bdearness\b",  # Dearness Allowance, Dearness Pay
+	r"\bda\b",  # DA, Basic + DA
+)
+
+_PF_WAGE_COMPONENT_RE = re.compile("|".join(PF_WAGE_COMPONENT_PATTERNS))
+
+
+def is_pf_wage_component(salary_component: str | None) -> bool:
+	"""True when a Salary Component name reads as Basic or Dearness Allowance.
+
+	Heuristic by design: there is no per-component PF flag, so a company that
+	names its basic component something unrecognisable (e.g. "Fixed Pay") will
+	not have it counted. ``apply_epf`` warns on the slip when EPF is applicable
+	but nothing matched, so that miss is visible rather than silent.
+	"""
+	if not salary_component:
+		return False
+	normalised = re.sub(r"[^a-z0-9]+", " ", salary_component.lower().replace(".", ""))
+	return bool(_PF_WAGE_COMPONENT_RE.search(normalised))
+
 
 def apply_epf(doc, method=None) -> None:
 	"""
@@ -38,6 +62,9 @@ def apply_epf(doc, method=None) -> None:
 	Employer contributions (EPF / EPS / EDLI / Admin) are configured as
 	"Employer Contribution" components on the Salary Structure and handled
 	by Salary Structure Assignment / CTC — not by this hook.
+
+	Contributions are computed on PF wage — the Basic and Dearness Allowance
+	earnings on the slip only (see ``_compute_pf_wage``) — never on gross pay.
 
 	Gated by a single `epf_applicable` flag on the Salary Structure Assignment.
 	All employees are assumed to be post-1 Sept 2014 EPF members.
@@ -73,7 +100,16 @@ def apply_epf(doc, method=None) -> None:
 
 	pf_wage = _compute_pf_wage(doc)
 	if pf_wage <= 0:
-		# Nothing to contribute on (e.g. no components flagged as PF wage)
+		if not _has_pf_wage_component(doc):
+			frappe.msgprint(
+				frappe._(
+					"No Basic or Dearness Allowance earning was found on this Salary Slip, "
+					"so no EPF has been deducted. EPF applies only to Basic and Dearness "
+					"Allowance; rename the component accordingly if it is PF-eligible."
+				),
+				indicator="orange",
+				alert=True,
+			)
 		_remove_epf_components(doc)
 		return
 
@@ -106,35 +142,40 @@ def _required_components_exist() -> bool:
 	return True
 
 
+def _is_pf_wage_row(e) -> bool:
+	# Additional Salary earnings (bonuses/arrears) never count, even when the
+	# component reads as Basic/DA.
+	return not e.get("additional_salary") and is_pf_wage_component(e.salary_component)
+
+
+def _has_pf_wage_component(doc) -> bool:
+	return any(_is_pf_wage_row(e) for e in doc.earnings)
+
+
 def _compute_pf_wage(doc) -> float:
+	# `amount`, not `default_amount`: for components that depend on payment days
+	# this is the LOP-prorated wage actually paid, which is what the EPF
+	# register and the ECR report as EPF wages.
+	return sum(flt(e.amount) for e in doc.earnings if _is_pf_wage_row(e))
+
+
+def _compute_monthly_epf_base(monthly_pf_wage: float, *, contribute_on_actual: bool) -> float:
+	annual_pf_wage = flt(monthly_pf_wage) * 12
+	annual_ceiling = EPF_WAGE_CEILING * 12
+	annual_base = annual_pf_wage if contribute_on_actual else min(annual_pf_wage, annual_ceiling)
+	return annual_base / 12
+
+
+def _lop_factor(doc) -> float:
+	"""Proration factor for LOP: paid days over total working days.
+
+	Falls back to 1.0 (no proration) when total working days is unavailable, so
+	the contribution is never divided by zero for a preview or a manual slip.
 	"""
-	Sum the PF-eligible earnings on the slip.
-
-	PF wage is *not* gross pay. Two categories of earning are excluded per
-	EPF statute (Sec. 2(b) excludes HRA; the EPFO circular excludes ad-hoc /
-	incentive-type pay):
-
-	  • HRA — identified from the Company master's ``hra_component`` field.
-	  • Any earning sourced from an Additional Salary (bonuses, incentives,
-	    arrears and other one-off components), flagged by ``additional_salary``
-	    on the slip row.
-
-	Amounts on `doc.earnings` are already prorated for LOP / payment_days by
-	the Salary Slip controller, so the returned PF wage reflects NCP days.
-	"""
-	hra_component = frappe.db.get_value("Company", doc.company, "hra_component") if doc.company else None
-
-	total = 0.0
-	for e in doc.earnings:
-		# Skip HRA — excluded from PF wage by statute.
-		if hra_component and e.salary_component == hra_component:
-			continue
-		# Skip anything injected from an Additional Salary (bonuses/incentives).
-		if e.get("additional_salary"):
-			continue
-		total += flt(e.amount)
-
-	return total
+	total_days = flt(doc.total_working_days)
+	if total_days <= 0:
+		return 1.0
+	return flt(doc.payment_days) / total_days
 
 
 def _compute_vpf(doc, epf_base: float, *, vpf_mode=None, vpf_percentage=None, vpf_amount=None) -> float:
