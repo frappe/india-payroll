@@ -100,15 +100,16 @@ def apply_epf(doc, method=None) -> None:
 
 	pf_wage = _compute_pf_wage(doc)
 	if pf_wage <= 0:
-		frappe.msgprint(
-			frappe._(
-				"No Basic or Dearness Allowance earning was found on this Salary Slip, "
-				"so no EPF has been deducted. EPF applies only to Basic and Dearness "
-				"Allowance; rename the component accordingly if it is PF-eligible."
-			),
-			indicator="orange",
-			alert=True,
-		)
+		if not _has_pf_wage_component(doc):
+			frappe.msgprint(
+				frappe._(
+					"No Basic or Dearness Allowance earning was found on this Salary Slip, "
+					"so no EPF has been deducted. EPF applies only to Basic and Dearness "
+					"Allowance; rename the component accordingly if it is PF-eligible."
+				),
+				indicator="orange",
+				alert=True,
+			)
 		_remove_epf_components(doc)
 		return
 
@@ -141,18 +142,21 @@ def _required_components_exist() -> bool:
 	return True
 
 
-def _compute_pf_wage(doc) -> float:
-	total = 0.0
-	for e in doc.earnings:
-		# Skip anything injected from an Additional Salary (bonuses/arrears).
-		if e.get("additional_salary"):
-			continue
-		# Count only Basic / Dearness Allowance.
-		if not is_pf_wage_component(e.salary_component):
-			continue
-		total += flt(e.default_amount)
+def _is_pf_wage_row(e) -> bool:
+	# Additional Salary earnings (bonuses/arrears) never count, even when the
+	# component reads as Basic/DA.
+	return not e.get("additional_salary") and is_pf_wage_component(e.salary_component)
 
-	return total
+
+def _has_pf_wage_component(doc) -> bool:
+	return any(_is_pf_wage_row(e) for e in doc.earnings)
+
+
+def _compute_pf_wage(doc) -> float:
+	# `amount`, not `default_amount`: for components that depend on payment days
+	# this is the LOP-prorated wage actually paid, which is what the EPF
+	# register and the ECR report as EPF wages.
+	return sum(flt(e.amount) for e in doc.earnings if _is_pf_wage_row(e))
 
 
 def _compute_monthly_epf_base(monthly_pf_wage: float, *, contribute_on_actual: bool) -> float:
