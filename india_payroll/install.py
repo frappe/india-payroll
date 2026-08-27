@@ -158,11 +158,38 @@ def get_custom_fields():
 				"insert_after": "create_overtime_slip",
 			},
 			{
-				"fieldname": "india_payroll_professional_tax_section",
-				"label": "Professional Tax",
+				"fieldname": "india_payroll_multi_company_section",
+				"label": "Multi-Company Payroll",
 				"fieldtype": "Section Break",
 				"insert_after": "india_payroll_tab",
 				"collapsible": 1,
+				"collapsible_depends_on": "eval:doc.enable_multi_company_payroll",
+			},
+			{
+				"fieldname": "enable_multi_company_payroll",
+				"label": "Enable Multi-Company Payroll",
+				"fieldtype": "Check",
+				"insert_after": "india_payroll_multi_company_section",
+				"description": (
+					"Maintain statutory registration details separately for each company. "
+					"When enabled, statutory deductions apply only to companies listed below."
+				),
+			},
+			{
+				"fieldname": "company_payroll_settings",
+				"label": "Company Payroll Settings",
+				"fieldtype": "Table",
+				"options": "India Payroll Company Setting",
+				"insert_after": "enable_multi_company_payroll",
+				"depends_on": "eval:doc.enable_multi_company_payroll",
+			},
+			{
+				"fieldname": "india_payroll_professional_tax_section",
+				"label": "Professional Tax",
+				"fieldtype": "Section Break",
+				"insert_after": "company_payroll_settings",
+				"collapsible": 1,
+				"collapsible_depends_on": "eval:doc.enable_professional_tax",
 			},
 			{
 				"fieldname": "enable_professional_tax",
@@ -176,6 +203,7 @@ def get_custom_fields():
 				"fieldtype": "Section Break",
 				"insert_after": "enable_professional_tax",
 				"collapsible": 1,
+				"collapsible_depends_on": "eval:doc.enable_esic",
 			},
 			{
 				"fieldname": "enable_esic",
@@ -188,7 +216,7 @@ def get_custom_fields():
 				"label": "ESIC Registration Number",
 				"fieldtype": "Data",
 				"insert_after": "enable_esic",
-				"depends_on": "eval:doc.enable_esic",
+				"depends_on": "eval:doc.enable_esic && !doc.enable_multi_company_payroll",
 				"translatable": 0,
 			},
 			{
@@ -197,6 +225,7 @@ def get_custom_fields():
 				"fieldtype": "Section Break",
 				"insert_after": "esic_registration_number",
 				"collapsible": 1,
+				"collapsible_depends_on": "eval:doc.enable_lwf",
 			},
 			{
 				"fieldname": "enable_lwf",
@@ -210,6 +239,7 @@ def get_custom_fields():
 				"fieldtype": "Section Break",
 				"insert_after": "enable_lwf",
 				"collapsible": 1,
+				"collapsible_depends_on": "eval:doc.enable_epf",
 			},
 			{
 				"fieldname": "enable_epf",
@@ -222,7 +252,7 @@ def get_custom_fields():
 				"label": "EPF Establishment Code",
 				"fieldtype": "Data",
 				"insert_after": "enable_epf",
-				"depends_on": "eval:doc.enable_epf",
+				"depends_on": "eval:doc.enable_epf && !doc.enable_multi_company_payroll",
 				"translatable": 0,
 				"description": "EPFO Establishment Code used in the ECR file header.",
 			},
@@ -232,6 +262,7 @@ def get_custom_fields():
 				"fieldtype": "Section Break",
 				"insert_after": "epf_establishment_code",
 				"collapsible": 1,
+				"collapsible_depends_on": "eval:doc.enable_tds_filing",
 				"description": (
 					"Credentials for filing quarterly salary TDS returns (Form 24Q) "
 					"through the Sandbox API (sandbox.co.in)."

@@ -4,6 +4,7 @@
 import frappe
 from frappe.utils import flt
 
+from india_payroll.india_payroll.company_settings import is_statutory_enabled
 from india_payroll.india_payroll.utils import get_slip_ssa_values
 
 # Employee deductions (reduce net pay).  Employer EPF/EPS/EDLI/Admin are
@@ -42,7 +43,7 @@ def apply_epf(doc, method=None) -> None:
 	Gated by a single `epf_applicable` flag on the Salary Structure Assignment.
 	All employees are assumed to be post-1 Sept 2014 EPF members.
 	"""
-	if not frappe.db.get_single_value("Payroll Settings", "enable_epf"):
+	if not is_statutory_enabled("epf", doc.company):
 		_remove_epf_components(doc)
 		return
 

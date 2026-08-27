@@ -193,7 +193,10 @@ doc_events = {
 		"validate": "india_payroll.india_payroll.professional_tax.validate_employment_state",
 	},
 	"Payroll Settings": {
-		"validate": "india_payroll.india_payroll.tds.settings.clear_token_cache_on_change",
+		"validate": [
+			"india_payroll.india_payroll.tds.settings.clear_token_cache_on_change",
+			"india_payroll.india_payroll.company_settings.validate_company_payroll_settings",
+		],
 	},
 	"Company": {
 		"validate": "india_payroll.india_payroll.tds.settings.validate_deductor_details",

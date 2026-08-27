@@ -4,6 +4,7 @@ import frappe
 from frappe.query_builder.functions import Sum
 from frappe.utils import flt, getdate
 
+from india_payroll.india_payroll.company_settings import is_statutory_enabled
 from india_payroll.india_payroll.utils import get_slip_ssa_values
 
 PT_SALARY_COMPONENT = "Professional Tax"
@@ -199,7 +200,8 @@ def apply_professional_tax(doc, method=None) -> None:
 	Only mutates ``doc.deductions``; the slip's ``set_net_pay`` (which runs
 	immediately after this hook in ``calculate_net_pay``) recomputes totals.
 	"""
-	if not frappe.db.get_single_value("Payroll Settings", "enable_professional_tax"):
+	if not is_statutory_enabled("professional_tax", doc.company):
+		_update_pt_in_salary_slip(doc, 0)
 		return
 
 	if not doc.salary_structure:
@@ -241,7 +243,7 @@ def validate_employment_state(doc, method=None) -> None:
 	employment_state set. A warning (not a hard error) is shown so that
 	users can still save assignments for states not yet covered by PT rules.
 	"""
-	if not frappe.db.get_single_value("Payroll Settings", "enable_professional_tax"):
+	if not is_statutory_enabled("professional_tax", doc.company):
 		return
 
 	if frappe.flags.in_test:
