@@ -20,9 +20,10 @@ from india_payroll.india_payroll.epf import (
 from india_payroll.install import create_epf_components
 
 # The earning component used as Basic across all EPF tests. Basic is
-# PF-eligible; formula `base` keeps gross_pay equal to the SSA base for
-# predictable assertions. HRA and Additional-Salary earnings are excluded from
-# PF wage (see test_pf_wage_excludes_hra_and_additional_salary).
+# PF-eligible (its name matches the Basic/DA heuristic); formula `base` keeps
+# gross_pay equal to the SSA base for predictable assertions. Only Basic and
+# Dearness Allowance count towards PF wage — see
+# test_pf_wage_counts_only_basic_and_dearness_allowance.
 _EPF_BASIC_COMPONENT = "EPF Test Basic"
 _EPF_TEST_EARNINGS = [
 	{
@@ -265,29 +266,81 @@ class TestEPF(HRMSTestSuite):
 		half_day = frappe._dict(payment_days=24.5, total_working_days=30)
 		self.assertEqual(_compute_vpf(half_day, 15_000, **vpf_args), 2_450)
 
-	def test_pf_wage_excludes_hra_and_additional_salary(self):
+	def test_pf_wage_counts_only_basic_and_dearness_allowance(self):
 		"""
-		PF wage must count only PF-eligible earnings. HRA (identified from the
-		Company master's ``hra_component``) and any earning sourced from an
-		Additional Salary (bonuses/incentives, flagged by ``additional_salary``)
-		are excluded — only Basic remains.
+		PF wage is an inclusion list: only Basic and Dearness Allowance attract
+		EPF. Every other earning — HRA, conveyance, special allowance — is
+		ignored, as is anything sourced from an Additional Salary even when the
+		component itself reads as Basic/DA.
 		"""
 		from india_payroll.india_payroll.epf import _compute_pf_wage
-
-		# Point the Company at an HRA component so the lookup resolves.
-		frappe.db.set_value("Company", "_Test Company", "hra_component", "HRA")
 
 		doc = frappe._dict(
 			company="_Test Company",
 			earnings=[
-				frappe._dict(salary_component="Basic Salary", amount=20_000),
-				frappe._dict(salary_component="HRA", amount=8_000),
-				frappe._dict(salary_component="Bonus", amount=5_000, additional_salary="ADSAL-0001"),
+				frappe._dict(salary_component="Basic Salary", default_amount=20_000, amount=20_000),
+				frappe._dict(salary_component="Dearness Allowance", default_amount=4_000, amount=4_000),
+				frappe._dict(salary_component="HRA", default_amount=8_000, amount=8_000),
+				frappe._dict(salary_component="Conveyance Allowance", default_amount=1_600, amount=1_600),
+				frappe._dict(salary_component="Special Allowance", default_amount=9_000, amount=9_000),
+				frappe._dict(
+					salary_component="Basic Arrear",
+					default_amount=5_000,
+					amount=5_000,
+					additional_salary="ADSAL-0001",
+				),
 			],
 		)
 
-		# Only Basic counts → 20,000 (HRA and the Additional-Salary bonus dropped).
-		self.assertEqual(_compute_pf_wage(doc), 20_000)
+		# Basic 20,000 + DA 4,000. Everything else drops out.
+		self.assertEqual(_compute_pf_wage(doc), 24_000)
+
+	def test_is_pf_wage_component_heuristic(self):
+		"""The name heuristic recognises Basic/DA spellings and nothing else."""
+		from india_payroll.india_payroll.epf import is_pf_wage_component
+
+		for name in (
+			"Basic",
+			"Basic Salary",
+			"Basic Pay",
+			"BASIC WAGES",
+			"Basic + DA",
+			"Basic + D.A.",
+			"Dearness Allowance",
+			"Dearness Allowance (DA)",
+			"DA",
+			"EPF Test Basic",
+		):
+			self.assertTrue(is_pf_wage_component(name), f"{name!r} should be PF wage")
+
+		for name in (
+			"House Rent Allowance",
+			"HRA",
+			"Conveyance Allowance",
+			"Special Allowance",
+			"Medical Allowance",
+			"Performance Bonus",
+			"Leave Encashment",
+			"Daily Allowance",
+			"Arrear",
+			"",
+			None,
+		):
+			self.assertFalse(is_pf_wage_component(name), f"{name!r} should not be PF wage")
+
+	def test_pf_wage_zero_when_no_basic_component(self):
+		"""A structure with no recognisable Basic/DA earning yields no PF wage."""
+		from india_payroll.india_payroll.epf import _compute_pf_wage
+
+		doc = frappe._dict(
+			company="_Test Company",
+			earnings=[
+				frappe._dict(salary_component="Fixed Pay", default_amount=50_000, amount=50_000),
+				frappe._dict(salary_component="HRA", default_amount=20_000, amount=20_000),
+			],
+		)
+
+		self.assertEqual(_compute_pf_wage(doc), 0)
 
 	@HRMSTestSuite.change_settings(
 		"Payroll Settings",
