@@ -18,6 +18,8 @@ import requests
 from frappe import _
 from frappe.utils import add_to_date, cint, get_datetime, now_datetime
 
+from india_payroll.india_payroll.tds.settings import get_sandbox_credentials
+
 # Sandbox selects the environment by host: live keys (key_live_…) work only against the
 # production host, test keys (key_test_…) only against the test host. There is no mode header.
 DEFAULT_BASE_URL = "https://api.sandbox.co.in"
@@ -152,10 +154,12 @@ class SandboxTDSClient:
 		if not self.settings.get("enable_tds_filing"):
 			frappe.throw(_("TDS Return Filing is not enabled in Payroll Settings."))
 
-		self.api_key = self.settings.get_password("tds_api_key", raise_exception=False)
-		self.api_secret = self.settings.get_password("tds_api_secret", raise_exception=False)
-		self.api_version = self.settings.get("tds_api_version") or DEFAULT_API_VERSION
-		self.sandbox_mode = cint(self.settings.get("tds_sandbox_mode"))
+		credentials = get_sandbox_credentials(self.settings)
+		self.api_key = credentials["api_key"]
+		self.api_secret = credentials["api_secret"]
+		self.api_version = credentials["api_version"] or DEFAULT_API_VERSION
+		self.sandbox_mode = credentials["sandbox_mode"]
+		self.credentials_from_conf = credentials["from_conf"]
 
 		# Offline mock mode: when site_config `sandbox_tds_mock` is set, every call returns a
 		# canned success response instead of hitting Sandbox. Lets the full validate -> TXT ->
@@ -164,7 +168,12 @@ class SandboxTDSClient:
 		self.mock = cint(frappe.conf.get("sandbox_tds_mock"))
 
 		if not self.mock and not (self.api_key and self.api_secret):
-			frappe.throw(_("Sandbox API Key and Secret are required in Payroll Settings."))
+			frappe.throw(
+				_(
+					"Sandbox API Key and Secret are required. Set them in Payroll Settings, or "
+					"contact support if this site's credentials are managed by Frappe Cloud."
+				)
+			)
 
 		# Route to the environment that matches the configured key: test host in sandbox mode,
 		# production host otherwise. A site-level override still wins (e.g. for a staging host).
