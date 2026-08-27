@@ -264,8 +264,9 @@ def get_custom_fields():
 				"collapsible": 1,
 				"collapsible_depends_on": "eval:doc.enable_tds_filing",
 				"description": (
-					"Credentials for filing quarterly salary TDS returns (Form 24Q) "
-					"through the Sandbox API (sandbox.co.in)."
+					"File quarterly salary TDS returns (Form 24Q) through the Sandbox API "
+					"(sandbox.co.in). Sites on Frappe Cloud have credentials provisioned for them; "
+					"any other site enters its own below."
 				),
 			},
 			{
@@ -273,6 +274,7 @@ def get_custom_fields():
 				"label": "Enable TDS Return Filing",
 				"fieldtype": "Check",
 				"insert_after": "india_payroll_tds_section",
+				"depends_on": "eval: india_payroll.can_enable_tds_filing(doc)",
 			},
 			{
 				"fieldname": "tds_sandbox_mode",
@@ -280,15 +282,28 @@ def get_custom_fields():
 				"fieldtype": "Check",
 				"default": "1",
 				"insert_after": "enable_tds_filing",
-				"depends_on": "eval:doc.enable_tds_filing",
+				"depends_on": "eval: india_payroll.is_tds_filing_enabled(doc)",
+				"read_only_depends_on": "eval: india_payroll.tds_credentials_from_conf()",
 				"description": "When checked, uses Sandbox test credentials. Uncheck for live filings.",
+			},
+			{
+				"fieldname": "tds_credentials_managed_notice",
+				"fieldtype": "HTML",
+				"insert_after": "tds_sandbox_mode",
+				"depends_on": "eval: india_payroll.tds_credentials_from_conf()",
+				"options": (
+					'<div class="text-muted small">'
+					"Sandbox credentials for this site are provisioned by Frappe Cloud. "
+					"Nothing to configure here."
+					"</div>"
+				),
 			},
 			{
 				"fieldname": "tds_api_key",
 				"label": "Sandbox API Key",
 				"fieldtype": "Password",
-				"insert_after": "tds_sandbox_mode",
-				"depends_on": "eval:doc.enable_tds_filing",
+				"insert_after": "tds_credentials_managed_notice",
+				"depends_on": "eval: !india_payroll.tds_credentials_from_conf()",
 				"translatable": 0,
 			},
 			{
@@ -296,7 +311,7 @@ def get_custom_fields():
 				"label": "Sandbox API Secret",
 				"fieldtype": "Password",
 				"insert_after": "tds_api_key",
-				"depends_on": "eval:doc.enable_tds_filing",
+				"depends_on": "eval: !india_payroll.tds_credentials_from_conf()",
 			},
 			{
 				"fieldname": "tds_api_version",
@@ -304,7 +319,7 @@ def get_custom_fields():
 				"fieldtype": "Data",
 				"default": "1.0.0",
 				"insert_after": "tds_api_secret",
-				"depends_on": "eval:doc.enable_tds_filing",
+				"depends_on": "eval: !india_payroll.tds_credentials_from_conf()",
 				"translatable": 0,
 			},
 			{

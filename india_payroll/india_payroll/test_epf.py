@@ -3,8 +3,11 @@
 
 import frappe
 from erpnext.setup.doctype.employee.test_employee import make_employee
-from frappe.utils import flt
-from hrms.payroll.doctype.salary_slip.test_salary_slip import make_salary_component
+from frappe.utils import add_days, flt, get_first_day
+from hrms.payroll.doctype.salary_slip.test_salary_slip import (
+	make_salary_component,
+	mark_attendance,
+)
 from hrms.payroll.doctype.salary_structure.salary_structure import make_salary_slip
 from hrms.payroll.doctype.salary_structure.test_salary_structure import (
 	create_salary_structure_assignment,
@@ -20,9 +23,10 @@ from india_payroll.india_payroll.epf import (
 from india_payroll.install import create_epf_components
 
 # The earning component used as Basic across all EPF tests. Basic is
-# PF-eligible; formula `base` keeps gross_pay equal to the SSA base for
-# predictable assertions. HRA and Additional-Salary earnings are excluded from
-# PF wage (see test_pf_wage_excludes_hra_and_additional_salary).
+# PF-eligible (its name matches the Basic/DA heuristic); formula `base` keeps
+# gross_pay equal to the SSA base for predictable assertions. Only Basic and
+# Dearness Allowance count towards PF wage — see
+# test_pf_wage_counts_only_basic_and_dearness_allowance.
 _EPF_BASIC_COMPONENT = "EPF Test Basic"
 _EPF_TEST_EARNINGS = [
 	{
@@ -32,6 +36,20 @@ _EPF_TEST_EARNINGS = [
 		"type": "Earning",
 		"amount_based_on_formula": 1,
 		"depends_on_payment_days": 0,
+	}
+]
+
+# A Basic that depends on payment days: HRMS prorates its `amount` for LOP
+# while `default_amount` keeps the full monthly value.
+_EPF_LOP_COMPONENT = "EPF Test Basic LOP"
+_EPF_LOP_EARNINGS = [
+	{
+		"salary_component": _EPF_LOP_COMPONENT,
+		"abbr": "EPFTBL",
+		"formula": "base",
+		"type": "Earning",
+		"amount_based_on_formula": 1,
+		"depends_on_payment_days": 1,
 	}
 ]
 
@@ -47,6 +65,8 @@ _TEST_EMAILS = [
 	"test_epf_disabled_setting@indiapayroll.com",
 	"test_epf_net_pay@indiapayroll.com",
 	"test_epf_preview@indiapayroll.com",
+	"test_epf_lop_prorated@indiapayroll.com",
+	"test_epf_lop_register_match@indiapayroll.com",
 ]
 
 
@@ -122,6 +142,48 @@ class TestEPF(HRMSTestSuite):
 		)
 		salary_slip.start_date = start_date
 		salary_slip.end_date = end_date
+
+		return employee, salary_slip
+
+	def _make_lop_salary_slip(
+		self,
+		email: str,
+		structure_name: str,
+		base: float,
+		lop_days: tuple = (10, 11, 12),
+	):
+		"""Salary slip for June 2026 with a payment-days-dependent Basic and real LOP."""
+		if not frappe.db.exists("Salary Component", _EPF_LOP_COMPONENT):
+			make_salary_component(_EPF_LOP_EARNINGS, False, ["_Test Company"])
+
+		start = get_first_day("2026-06-01")
+		employee = make_employee(email, company="_Test Company", date_of_joining="2020-01-01")
+		frappe.db.set_value("Employee", employee, {"relieving_date": None, "status": "Active"})
+		frappe.db.delete("Attendance", {"employee": employee})
+
+		for day in lop_days:
+			mark_attendance(employee, add_days(start, day), "Absent", ignore_validate=True)
+
+		salary_structure = make_salary_structure(
+			structure_name,
+			"Monthly",
+			company="_Test Company",
+			currency="INR",
+			earnings=_EPF_LOP_EARNINGS,
+			deductions=[],
+		)
+		ssa = create_salary_structure_assignment(
+			employee,
+			salary_structure.name,
+			from_date="2026-06-01",
+			company="_Test Company",
+			base=base,
+		)
+		frappe.db.set_value("Salary Structure Assignment", ssa.name, "epf_applicable", 1)
+
+		salary_slip = make_salary_slip(salary_structure.name, employee=employee, posting_date="2026-06-30")
+		salary_slip.start_date = "2026-06-01"
+		salary_slip.end_date = "2026-06-30"
 
 		return employee, salary_slip
 
@@ -220,7 +282,13 @@ class TestEPF(HRMSTestSuite):
 
 	@HRMSTestSuite.change_settings(
 		"Payroll Settings",
-		{"enable_epf": 1, "enable_professional_tax": 0, "enable_esic": 0, "enable_lwf": 0},
+		{
+			"enable_epf": 1,
+			"enable_professional_tax": 0,
+			"enable_esic": 0,
+			"enable_lwf": 0,
+			"payroll_based_on": "Leave",
+		},
 	)
 	def test_vpf_amount_mode(self):
 		"""
@@ -265,25 +333,121 @@ class TestEPF(HRMSTestSuite):
 		half_day = frappe._dict(payment_days=24.5, total_working_days=30)
 		self.assertEqual(_compute_vpf(half_day, 15_000, **vpf_args), 2_450)
 
-	def test_pf_wage_excludes_hra_and_additional_salary(self):
+	def test_pf_wage_uses_prorated_amount_not_default_amount(self):
 		"""
-		PF wage must count only PF-eligible earnings. HRA (identified from the
-		Company master's ``hra_component``) and any earning sourced from an
-		Additional Salary (bonuses/incentives, flagged by ``additional_salary``)
-		are excluded — only Basic remains.
+		PF wage tracks the amount actually paid. For a component that depends on
+		payment days HRMS prorates ``amount`` for LOP while ``default_amount``
+		keeps the full monthly value; EPF must follow ``amount``, which is what
+		the EPF register and the ECR report as EPF wages.
 		"""
 		from india_payroll.india_payroll.epf import _compute_pf_wage
 
-		# Point the Company at an HRA component so the lookup resolves.
-		frappe.db.set_value("Company", "_Test Company", "hra_component", "HRA")
+		doc = frappe._dict(
+			company="_Test Company",
+			earnings=[
+				# Half a month of LOP: structure wage 20,000, paid 10,000.
+				frappe._dict(salary_component="Basic Salary", default_amount=20_000, amount=10_000),
+				frappe._dict(salary_component="Dearness Allowance", default_amount=4_000, amount=2_000),
+			],
+		)
+
+		self.assertEqual(_compute_pf_wage(doc), 12_000)
+
+	@HRMSTestSuite.change_settings(
+		"Payroll Settings",
+		{
+			"enable_epf": 1,
+			"enable_professional_tax": 0,
+			"enable_esic": 0,
+			"enable_lwf": 0,
+			"payroll_based_on": "Attendance",
+			"consider_unmarked_attendance_as": "Present",
+		},
+	)
+	def test_epf_on_lop_matches_epf_register(self):
+		"""
+		A payment-days-dependent Basic above the ceiling, with LOP: the EPF
+		deducted on the slip must equal 12% of the EPF wages the register
+		reports, so the slip and the ECR cannot disagree.
+		"""
+		from india_payroll.india_payroll.epf import EPF_EMPLOYEE_RATE, _epfo_round
+		from india_payroll.india_payroll.report.employee_provident_fund_register.employee_provident_fund_register import (
+			execute,
+		)
+
+		# Structure wage sits above the ceiling but the LOP-prorated wage falls
+		# below it: capping the full wage instead of the paid wage over-deducts.
+		employee, slip = self._make_lop_salary_slip(
+			"test_epf_lop_register_match@indiapayroll.com",
+			"Test EPF LOP Register Structure",
+			16_000.0,
+		)
+		slip.insert()
+		slip.submit()
+
+		earning = slip.earnings[0]
+		paid_wage = flt(earning.amount)
+		self.assertLess(paid_wage, flt(earning.default_amount), "LOP did not reduce the paid wage")
+		self.assertLess(paid_wage, EPF_WAGE_CEILING, "paid wage must fall below the ceiling")
+
+		rows = execute(frappe._dict({"company": "_Test Company", "from_year": 2026, "month": "June"}))[1]
+		row = next(r for r in rows if r["employee"] == employee)
+
+		slip_epf = self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT)
+		self.assertEqual(row["epf_wages"], min(paid_wage, EPF_WAGE_CEILING))
+		self.assertEqual(slip_epf, row["employee_epf"])
+		self.assertEqual(slip_epf, _epfo_round(flt(row["epf_wages"]) * EPF_EMPLOYEE_RATE))
+
+	@HRMSTestSuite.change_settings(
+		"Payroll Settings",
+		{
+			"enable_epf": 1,
+			"enable_professional_tax": 0,
+			"enable_esic": 0,
+			"enable_lwf": 0,
+			"payroll_based_on": "Attendance",
+			"consider_unmarked_attendance_as": "Present",
+		},
+	)
+	def test_percentage_vpf_follows_prorated_pf_wage(self):
+		"""Percentage VPF is a share of the EPF base, so it prorates with LOP too."""
+		employee, slip = self._make_lop_salary_slip(
+			"test_epf_lop_prorated@indiapayroll.com",
+			"Test EPF LOP VPF Structure",
+			10_000.0,
+		)
+		self._set_ssa(employee, {"vpf_mode": "Percentage", "vpf_percentage": 5})
+		slip.insert()
+
+		from india_payroll.india_payroll.epf import EPF_EMPLOYEE_RATE, _epfo_round
+
+		paid_wage = flt(slip.earnings[0].amount)
+		self.assertLess(paid_wage, 10_000, "LOP did not reduce the paid wage")
+		self.assertEqual(
+			self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT),
+			_epfo_round(paid_wage * EPF_EMPLOYEE_RATE),
+		)
+		self.assertEqual(self._amount(slip, "deductions", VPF_COMPONENT), _epfo_round(paid_wage * 0.05))
+
+	def test_pf_wage_counts_only_basic_and_dearness_allowance(self):
+		"""
+		PF wage is an inclusion list: only Basic and Dearness Allowance attract
+		EPF. Every other earning — HRA, conveyance, special allowance — is
+		ignored, as is anything sourced from an Additional Salary even when the
+		component itself reads as Basic/DA.
+		"""
+		from india_payroll.india_payroll.epf import _compute_pf_wage
 
 		doc = frappe._dict(
 			company="_Test Company",
 			earnings=[
 				frappe._dict(salary_component="Basic Salary", default_amount=20_000, amount=20_000),
+				frappe._dict(salary_component="Dearness Allowance", default_amount=4_000, amount=4_000),
 				frappe._dict(salary_component="HRA", default_amount=8_000, amount=8_000),
+				frappe._dict(salary_component="Conveyance Allowance", default_amount=1_600, amount=1_600),
+				frappe._dict(salary_component="Special Allowance", default_amount=9_000, amount=9_000),
 				frappe._dict(
-					salary_component="Bonus",
+					salary_component="Basic Arrear",
 					default_amount=5_000,
 					amount=5_000,
 					additional_salary="ADSAL-0001",
@@ -291,93 +455,55 @@ class TestEPF(HRMSTestSuite):
 			],
 		)
 
-		# Only Basic counts → 20,000 (HRA and the Additional-Salary bonus dropped).
-		self.assertEqual(_compute_pf_wage(doc), 20_000)
+		# Basic 20,000 + DA 4,000. Everything else drops out.
+		self.assertEqual(_compute_pf_wage(doc), 24_000)
 
-	def test_pf_wage_uses_unprorated_structure_amount(self):
-		"""
-		PF wage tracks the full Salary Structure amount (``default_amount``),
-		not the LOP-prorated ``amount``, so the ceiling test sees the real
-		structure wage even in an LOP month.
-		"""
+	def test_is_pf_wage_component_heuristic(self):
+		"""The name heuristic recognises Basic/DA spellings and nothing else."""
+		from india_payroll.india_payroll.epf import is_pf_wage_component
+
+		for name in (
+			"Basic",
+			"Basic Salary",
+			"Basic Pay",
+			"BASIC WAGES",
+			"Basic + DA",
+			"Basic + D.A.",
+			"Dearness Allowance",
+			"Dearness Allowance (DA)",
+			"DA",
+			"EPF Test Basic",
+		):
+			self.assertTrue(is_pf_wage_component(name), f"{name!r} should be PF wage")
+
+		for name in (
+			"House Rent Allowance",
+			"HRA",
+			"Conveyance Allowance",
+			"Special Allowance",
+			"Medical Allowance",
+			"Performance Bonus",
+			"Leave Encashment",
+			"Daily Allowance",
+			"Arrear",
+			"",
+			None,
+		):
+			self.assertFalse(is_pf_wage_component(name), f"{name!r} should not be PF wage")
+
+	def test_pf_wage_zero_when_no_basic_component(self):
+		"""A structure with no recognisable Basic/DA earning yields no PF wage."""
 		from india_payroll.india_payroll.epf import _compute_pf_wage
 
 		doc = frappe._dict(
 			company="_Test Company",
-			# LOP halved the paid amount, but the structure wage is still 20,000.
-			earnings=[frappe._dict(salary_component="Basic Salary", default_amount=20_000, amount=10_000)],
+			earnings=[
+				frappe._dict(salary_component="Fixed Pay", default_amount=50_000, amount=50_000),
+				frappe._dict(salary_component="HRA", default_amount=20_000, amount=20_000),
+			],
 		)
 
-		self.assertEqual(_compute_pf_wage(doc), 20_000)
-
-	def test_monthly_epf_base_applies_annual_ceiling(self):
-		"""
-		The base is resolved by annualising the structure PF wage, applying the
-		annual ceiling (₹15,000 × 12), then dividing back to a flat month.
-		"""
-		from india_payroll.india_payroll.epf import _compute_monthly_epf_base
-
-		# Below ceiling → base is the wage itself.
-		self.assertEqual(_compute_monthly_epf_base(12_000, contribute_on_actual=False), 12_000)
-		# Above ceiling, default → capped at the ceiling.
-		self.assertEqual(_compute_monthly_epf_base(25_000, contribute_on_actual=False), 15_000)
-		# Above ceiling, contribute-on-actual → full wage.
-		self.assertEqual(_compute_monthly_epf_base(25_000, contribute_on_actual=True), 25_000)
-
-	@HRMSTestSuite.change_settings(
-		"Payroll Settings",
-		{"enable_epf": 1, "enable_professional_tax": 0, "enable_esic": 0, "enable_lwf": 0},
-	)
-	def test_lop_prorates_epf(self):
-		"""
-		The ceiling is checked on the full-month structure wage, but the
-		contribution is prorated by payment_days / total_working_days: a 15/30
-		LOP month on a ₹15,000 wage deducts 12% × 15,000 × 15/30 = ₹900.
-		"""
-		from india_payroll.india_payroll.epf import apply_epf
-
-		gross = float(EPF_WAGE_CEILING)
-		_, slip = self._make_salary_slip(
-			"test_epf_below_ceiling@indiapayroll.com",
-			"Test EPF LOP Structure",
-			gross,
-		)
-		slip.process_salary_structure(for_preview=1)
-
-		# Half the month is LOP.
-		slip.total_working_days = 30
-		slip.payment_days = 15
-		apply_epf(slip)
-
-		self.assertEqual(self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT), 900)
-
-	@HRMSTestSuite.change_settings(
-		"Payroll Settings",
-		{"enable_epf": 1, "enable_professional_tax": 0, "enable_esic": 0, "enable_lwf": 0},
-	)
-	def test_above_ceiling_caps_before_lop_proration(self):
-		"""
-		Ordering check: the limit is applied to the full-month structure wage
-		first, and only the capped base is prorated for LOP.
-
-		₹25,000 wage, capped → ₹15,000 base, 15/30 LOP:
-		  12% × 15,000 × 15/30 = ₹900
-		(not 12% × min(25,000 × 15/30, 15,000) = ₹1,500).
-		"""
-		from india_payroll.india_payroll.epf import apply_epf
-
-		_, slip = self._make_salary_slip(
-			"test_epf_above_ceiling_capped@indiapayroll.com",
-			"Test EPF Ceiling LOP Structure",
-			25_000.0,
-		)
-		slip.process_salary_structure(for_preview=1)
-
-		slip.total_working_days = 30
-		slip.payment_days = 15
-		apply_epf(slip)
-
-		self.assertEqual(self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT), 900)
+		self.assertEqual(_compute_pf_wage(doc), 0)
 
 	@HRMSTestSuite.change_settings(
 		"Payroll Settings",
