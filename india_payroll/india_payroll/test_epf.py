@@ -361,6 +361,7 @@ class TestEPF(HRMSTestSuite):
 			"enable_esic": 0,
 			"enable_lwf": 0,
 			"payroll_based_on": "Attendance",
+			"consider_unmarked_attendance_as": "Present",
 		},
 	)
 	def test_epf_on_lop_matches_epf_register(self):
@@ -369,29 +370,33 @@ class TestEPF(HRMSTestSuite):
 		deducted on the slip must equal 12% of the EPF wages the register
 		reports, so the slip and the ECR cannot disagree.
 		"""
+		from india_payroll.india_payroll.epf import EPF_EMPLOYEE_RATE, _epfo_round
 		from india_payroll.india_payroll.report.employee_provident_fund_register.employee_provident_fund_register import (
 			execute,
 		)
 
+		# Structure wage sits above the ceiling but the LOP-prorated wage falls
+		# below it: capping the full wage instead of the paid wage over-deducts.
 		employee, slip = self._make_lop_salary_slip(
 			"test_epf_lop_register_match@indiapayroll.com",
 			"Test EPF LOP Register Structure",
-			30_000.0,
+			16_000.0,
 		)
 		slip.insert()
 		slip.submit()
 
-		# LOP actually took effect, so `amount` is below `default_amount`.
 		earning = slip.earnings[0]
-		self.assertLess(flt(earning.amount), flt(earning.default_amount))
+		paid_wage = flt(earning.amount)
+		self.assertLess(paid_wage, flt(earning.default_amount), "LOP did not reduce the paid wage")
+		self.assertLess(paid_wage, EPF_WAGE_CEILING, "paid wage must fall below the ceiling")
 
 		rows = execute(frappe._dict({"company": "_Test Company", "from_year": 2026, "month": "June"}))[1]
 		row = next(r for r in rows if r["employee"] == employee)
 
 		slip_epf = self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT)
-		self.assertEqual(row["epf_wages"], flt(earning.amount))
+		self.assertEqual(row["epf_wages"], min(paid_wage, EPF_WAGE_CEILING))
 		self.assertEqual(slip_epf, row["employee_epf"])
-		self.assertEqual(slip_epf, round(flt(row["epf_wages"]) * 0.12))
+		self.assertEqual(slip_epf, _epfo_round(flt(row["epf_wages"]) * EPF_EMPLOYEE_RATE))
 
 	@HRMSTestSuite.change_settings(
 		"Payroll Settings",
@@ -401,6 +406,7 @@ class TestEPF(HRMSTestSuite):
 			"enable_esic": 0,
 			"enable_lwf": 0,
 			"payroll_based_on": "Attendance",
+			"consider_unmarked_attendance_as": "Present",
 		},
 	)
 	def test_percentage_vpf_follows_prorated_pf_wage(self):
@@ -413,10 +419,15 @@ class TestEPF(HRMSTestSuite):
 		self._set_ssa(employee, {"vpf_mode": "Percentage", "vpf_percentage": 5})
 		slip.insert()
 
+		from india_payroll.india_payroll.epf import EPF_EMPLOYEE_RATE, _epfo_round
+
 		paid_wage = flt(slip.earnings[0].amount)
-		self.assertLess(paid_wage, 10_000)
-		self.assertEqual(self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT), round(paid_wage * 0.12))
-		self.assertEqual(self._amount(slip, "deductions", VPF_COMPONENT), round(paid_wage * 0.05))
+		self.assertLess(paid_wage, 10_000, "LOP did not reduce the paid wage")
+		self.assertEqual(
+			self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT),
+			_epfo_round(paid_wage * EPF_EMPLOYEE_RATE),
+		)
+		self.assertEqual(self._amount(slip, "deductions", VPF_COMPONENT), _epfo_round(paid_wage * 0.05))
 
 	def test_pf_wage_counts_only_basic_and_dearness_allowance(self):
 		"""
