@@ -6,6 +6,7 @@ from frappe import _
 from frappe.query_builder import DocType
 from frappe.utils import flt, getdate
 
+from india_payroll.india_payroll.company_settings import get_applicable_companies
 from india_payroll.india_payroll.lwf import LWF_STATE_CONFIG, _is_deduction_month
 from india_payroll.india_payroll.utils import get_effective_ssa_values
 
@@ -109,6 +110,10 @@ def get_data(filters):
 	state_filter = filters.get("work_state")
 	status_filter = filters.get("deduction_status")
 
+	applicable_companies = get_applicable_companies("lwf")
+	if applicable_companies is not None and not applicable_companies:
+		return []
+
 	SS = DocType("Salary Slip")
 	Emp = DocType("Employee")
 
@@ -130,6 +135,9 @@ def get_data(filters):
 
 	if filters.get("company"):
 		query = query.where(SS.company == filters["company"])
+
+	if applicable_companies is not None:
+		query = query.where(SS.company.isin(applicable_companies))
 
 	if date_range:
 		query = query.where(SS.start_date >= date_range["from_date"])

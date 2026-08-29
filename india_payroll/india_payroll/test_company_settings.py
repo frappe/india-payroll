@@ -7,6 +7,7 @@ from hrms.tests.utils import HRMSTestSuite
 from india_payroll.india_payroll.company_settings import (
 	COMPANY_SETTINGS_FIELD,
 	MULTI_COMPANY_FIELD,
+	get_applicable_companies,
 	get_registration_number,
 	is_statutory_enabled,
 	validate_company_payroll_settings,
@@ -123,6 +124,30 @@ class TestCompanyPayrollSettings(HRMSTestSuite):
 		doc.set(COMPANY_SETTINGS_FIELD, [])
 
 		self.assertRaises(frappe.ValidationError, validate_company_payroll_settings, doc)
+
+	def test_applicable_companies_unrestricted_in_single_company_mode(self):
+		self._apply({MULTI_COMPANY_FIELD: 0, "enable_esic": 1, "enable_lwf": 1, "enable_epf": 1})
+
+		for statute in ("esic", "lwf", "epf"):
+			self.assertIsNone(get_applicable_companies(statute))
+
+	def test_applicable_companies_limited_to_configured_rows(self):
+		self._apply(
+			{MULTI_COMPANY_FIELD: 1, "enable_esic": 1, "enable_lwf": 1, "enable_epf": 1},
+			[{"company": _COMPANY_A, "esic_registration_number": "31000123450000"}],
+		)
+
+		for statute in ("esic", "lwf", "epf"):
+			self.assertEqual(get_applicable_companies(statute), [_COMPANY_A])
+
+	def test_applicable_companies_empty_when_statute_globally_off(self):
+		self._apply(
+			{MULTI_COMPANY_FIELD: 1, "enable_esic": 0, "enable_lwf": 1},
+			[{"company": _COMPANY_A}],
+		)
+
+		self.assertEqual(get_applicable_companies("esic"), [])
+		self.assertEqual(get_applicable_companies("lwf"), [_COMPANY_A])
 
 	def test_registration_numbers_are_stripped(self):
 		doc = frappe.get_doc("Payroll Settings")

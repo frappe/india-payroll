@@ -69,6 +69,26 @@ def is_statutory_enabled(statute: str, company: str | None = None) -> bool:
 	return get_company_setting(company) is not None
 
 
+def get_applicable_companies(statute: str) -> list[str] | None:
+	"""Companies a statutory register may report `statute` liabilities for.
+
+	`None` means no company restriction — multi-company payroll is off and
+	every company follows the single global configuration, so reports keep
+	their previous behaviour. A list means multi-company payroll is on and
+	only the listed companies participate; an empty list means no company
+	does, so the register must be empty.
+	"""
+	settings = frappe.get_cached_doc("Payroll Settings")
+
+	if not settings.get(MULTI_COMPANY_FIELD):
+		return None
+
+	if not settings.get(STATUTE_TOGGLE_FIELDS[statute]):
+		return []
+
+	return [row.company for row in settings.get(COMPANY_SETTINGS_FIELD) or [] if row.company]
+
+
 def get_registration_number(statute: str, company: str | None = None) -> str | None:
 	"""Registration identifier for `statute`, per company when multi-company is on."""
 	settings = frappe.get_cached_doc("Payroll Settings")

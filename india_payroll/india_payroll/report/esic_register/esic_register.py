@@ -8,6 +8,7 @@ from frappe import _
 from frappe.query_builder import DocType
 from frappe.utils import flt
 
+from india_payroll.india_payroll.company_settings import get_applicable_companies
 from india_payroll.india_payroll.utils import get_effective_ssa_values
 
 # Statutory rates (ESI Act, 1948 — effective July 2019)
@@ -116,6 +117,10 @@ def get_columns():
 def get_data(filters):
 	date_range = _get_date_range(filters)
 
+	applicable_companies = get_applicable_companies("esic")
+	if applicable_companies is not None and not applicable_companies:
+		return []
+
 	SS = DocType("Salary Slip")
 	Emp = DocType("Employee")
 
@@ -138,6 +143,9 @@ def get_data(filters):
 
 	if filters.get("company"):
 		query = query.where(SS.company == filters["company"])
+
+	if applicable_companies is not None:
+		query = query.where(SS.company.isin(applicable_companies))
 
 	if date_range:
 		query = query.where(SS.start_date >= date_range["from_date"])

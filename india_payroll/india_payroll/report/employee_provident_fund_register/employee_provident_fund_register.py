@@ -8,6 +8,10 @@ from frappe import _
 from frappe.query_builder import DocType
 from frappe.utils import flt
 
+from india_payroll.india_payroll.company_settings import (
+	get_applicable_companies,
+	is_multi_company_enabled,
+)
 from india_payroll.india_payroll.epf import (
 	EPF_EMPLOYEE_COMPONENT,
 	EPF_EMPLOYER_RATE,
@@ -145,6 +149,10 @@ def get_columns():
 def get_data(filters):
 	date_range = _get_date_range(filters)
 
+	applicable_companies = get_applicable_companies("epf")
+	if applicable_companies is not None and not applicable_companies:
+		return []
+
 	SS = DocType("Salary Slip")
 	Emp = DocType("Employee")
 
@@ -172,6 +180,8 @@ def get_data(filters):
 
 	if filters.get("company"):
 		query = query.where(SS.company == filters["company"])
+	if applicable_companies is not None:
+		query = query.where(SS.company.isin(applicable_companies))
 	if date_range:
 		query = query.where(SS.start_date >= date_range["from_date"])
 		query = query.where(SS.start_date <= date_range["to_date"])
@@ -354,9 +364,20 @@ def get_ecr_file(filters: dict | str) -> dict:
 	if isinstance(filters, str):
 		filters = frappe.parse_json(filters)
 
-	rows = get_data(filters or {})
+	filters = filters or {}
+
+	if is_multi_company_enabled() and not filters.get("company"):
+		frappe.throw(
+			_(
+				"Select a Company before generating the ECR file. Each ECR file is filed "
+				"against a single EPF Establishment Code, and {0} is enabled in Payroll Settings."
+			).format(frappe.bold(_("Multi-Company Payroll"))),
+			title=_("Company Required"),
+		)
+
+	rows = get_data(filters)
 	if not rows:
-		return {"filename": _ecr_filename(filters or {}), "content": "", "row_count": 0}
+		return {"filename": _ecr_filename(filters), "content": "", "row_count": 0}
 
 	missing = [r["employee"] for r in rows if not r.get("uan_number")]
 	if missing:
@@ -383,7 +404,7 @@ def get_ecr_file(filters: dict | str) -> dict:
 		)
 
 	return {
-		"filename": _ecr_filename(filters or {}),
+		"filename": _ecr_filename(filters),
 		"content": "\n".join(lines),
 		"row_count": len(lines),
 	}
