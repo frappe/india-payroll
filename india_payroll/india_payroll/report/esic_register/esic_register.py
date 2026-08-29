@@ -9,7 +9,8 @@ from frappe.query_builder import DocType
 from frappe.utils import flt
 
 from india_payroll.india_payroll.company_settings import get_applicable_companies
-from india_payroll.india_payroll.utils import get_effective_ssa_values
+from india_payroll.india_payroll.esi import ESI_EMPLOYEE_COMPONENT
+from india_payroll.india_payroll.utils import get_effective_ssa_values, get_slips_with_deduction
 
 # Statutory rates (ESI Act, 1948 — effective July 2019)
 EMPLOYEE_ESI_RATE = 0.0075  # 0.75 %
@@ -118,8 +119,6 @@ def get_data(filters):
 	date_range = _get_date_range(filters)
 
 	applicable_companies = get_applicable_companies("esic")
-	if applicable_companies is not None and not applicable_companies:
-		return []
 
 	SS = DocType("Salary Slip")
 	Emp = DocType("Employee")
@@ -129,6 +128,7 @@ def get_data(filters):
 		.join(Emp)
 		.on(Emp.name == SS.employee)
 		.select(
+			SS.name.as_("slip"),
 			SS.employee,
 			SS.company,
 			SS.salary_structure,
@@ -144,9 +144,6 @@ def get_data(filters):
 	if filters.get("company"):
 		query = query.where(SS.company == filters["company"])
 
-	if applicable_companies is not None:
-		query = query.where(SS.company.isin(applicable_companies))
-
 	if date_range:
 		query = query.where(SS.start_date >= date_range["from_date"])
 		query = query.where(SS.start_date <= date_range["to_date"])
@@ -156,6 +153,7 @@ def get_data(filters):
 		query = query.select(Emp.esic_card_no)
 
 	rows = query.run(as_dict=True)
+	rows = _filter_in_scope(rows, applicable_companies)
 
 	coverage_filter = filters.get("coverage_status")
 
@@ -202,6 +200,21 @@ def get_data(filters):
 		)
 
 	return data
+
+
+def _filter_in_scope(rows, applicable_companies):
+	"""Drop slips whose company is outside ESIC scope, keeping those that already
+	recorded an ESI deduction.
+
+	A company removed from Company Payroll Settings stops accruing new ESI, but
+	the contributions it already deducted remain part of the filed record and
+	must stay reportable.
+	"""
+	if applicable_companies is None:
+		return rows
+
+	with_esi = get_slips_with_deduction([r.slip for r in rows], [ESI_EMPLOYEE_COMPONENT])
+	return [r for r in rows if r.company in applicable_companies or r.slip in with_esi]
 
 
 def _get_date_range(filters):

@@ -7,8 +7,8 @@ from frappe.query_builder import DocType
 from frappe.utils import flt, getdate
 
 from india_payroll.india_payroll.company_settings import get_applicable_companies
-from india_payroll.india_payroll.lwf import LWF_STATE_CONFIG, _is_deduction_month
-from india_payroll.india_payroll.utils import get_effective_ssa_values
+from india_payroll.india_payroll.lwf import LWF_SALARY_COMPONENT, LWF_STATE_CONFIG, _is_deduction_month
+from india_payroll.india_payroll.utils import get_effective_ssa_values, get_slips_with_deduction
 
 _MONTHS = {
 	"January": 1,
@@ -111,8 +111,6 @@ def get_data(filters):
 	status_filter = filters.get("deduction_status")
 
 	applicable_companies = get_applicable_companies("lwf")
-	if applicable_companies is not None and not applicable_companies:
-		return []
 
 	SS = DocType("Salary Slip")
 	Emp = DocType("Employee")
@@ -122,6 +120,7 @@ def get_data(filters):
 		.join(Emp)
 		.on(Emp.name == SS.employee)
 		.select(
+			SS.name.as_("slip"),
 			SS.employee,
 			SS.start_date,
 			SS.salary_structure,
@@ -136,14 +135,12 @@ def get_data(filters):
 	if filters.get("company"):
 		query = query.where(SS.company == filters["company"])
 
-	if applicable_companies is not None:
-		query = query.where(SS.company.isin(applicable_companies))
-
 	if date_range:
 		query = query.where(SS.start_date >= date_range["from_date"])
 		query = query.where(SS.start_date <= date_range["to_date"])
 
 	rows = query.run(as_dict=True)
+	rows = _filter_in_scope(rows, applicable_companies)
 
 	data = []
 	for row in rows:
@@ -205,6 +202,21 @@ def get_data(filters):
 		)
 
 	return data
+
+
+def _filter_in_scope(rows, applicable_companies):
+	"""Drop slips whose company is outside LWF scope, keeping those that already
+	recorded an LWF deduction.
+
+	A company removed from Company Payroll Settings stops accruing new LWF, but
+	the contributions it already deducted remain remittable and must stay
+	reportable.
+	"""
+	if applicable_companies is None:
+		return rows
+
+	with_lwf = get_slips_with_deduction([r.slip for r in rows], [LWF_SALARY_COMPONENT])
+	return [r for r in rows if r.company in applicable_companies or r.slip in with_lwf]
 
 
 def _get_date_range(filters):
