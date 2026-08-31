@@ -1,0 +1,2194 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+        "name": {
+            "type": "string",
+            "enum": [
+                "form24q_workbook"
+            ]
+        },
+        "@entity": {
+            "type": "string",
+            "enum": [
+                "workbook"
+            ]
+        },
+        "sheets": {
+            "type": "array",
+            "items": {
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "enum": [
+                                    "payer_sheet"
+                                ]
+                            },
+                            "@entity": {
+                                "type": "string",
+                                "enum": [
+                                    "sheet"
+                                ]
+                            },
+                            "blocks": {
+                                "type": "array",
+                                "items": {
+                                    "oneOf": [
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "name": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "payer_list"
+                                                    ]
+                                                },
+                                                "@entity": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "list"
+                                                    ]
+                                                },
+                                                "items": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "tan": {
+                                                                "type": "string",
+                                                                "pattern": "[A-Z]{4}[0-9]{5}[A-Z]{1}",
+                                                                "description": "TAN of the deductor. Should be all capital"
+                                                            },
+                                                            "pan": {
+                                                                "type": "string",
+                                                                "pattern": "[A-Z]{3}[PCFTGHLABJ]{1}[A-Z]{1}[0-9]{4}[A-Z]{1}",
+                                                                "description": "PAN of the Deductor. Allow Enum: PANNOTREQD"
+                                                            },
+                                                            "name": {
+                                                                "type": "string",
+                                                                "pattern": "^(?![. ]+$)[^~!@#$%^&*()_+,/?;:’”[\\]{}\\\\]+$",
+                                                                "description": "Name of the Deductor"
+                                                            },
+                                                            "branch": {
+                                                                "type": "string",
+                                                                "pattern": "^(?![. ]+$)[^~!@#$%^&*()_+,/?;:’”[\\]{}\\\\]+$",
+                                                                "description": "Name of the Deductor's Branch"
+                                                            },
+                                                            "street": {
+                                                                "type": "string",
+                                                                "description": "No Special Characters"
+                                                            },
+                                                            "area": {
+                                                                "type": "string",
+                                                                "description": "No  Special Characters"
+                                                            },
+                                                            "city": {
+                                                                "type": "string",
+                                                                "description": "No  Special Characters"
+                                                            },
+                                                            "state": {
+                                                                "type": "string",
+                                                                "enum": [
+                                                                    "ANDAMAN AND NICOBAR ISLANDS",
+                                                                    "ANDHRA PRADESH",
+                                                                    "ARUNACHAL PRADESH",
+                                                                    "ASSAM",
+                                                                    "BIHAR",
+                                                                    "CHANDIGARH",
+                                                                    "DADRA & NAGAR HAVELI AND DAMAN & DIU",
+                                                                    "DELHI",
+                                                                    "GOA",
+                                                                    "GUJARAT",
+                                                                    "HARYANA",
+                                                                    "HIMACHAL PRADESH",
+                                                                    "JAMMU & KASHMIR",
+                                                                    "KARNATAKA",
+                                                                    "KERALA",
+                                                                    "LAKSHWADEEP",
+                                                                    "MADHYA PRADESH",
+                                                                    "MAHARASHTRA",
+                                                                    "MANIPUR",
+                                                                    "MEGHALAYA",
+                                                                    "MIZORAM",
+                                                                    "NAGALAND",
+                                                                    "ODISHA",
+                                                                    "PONDICHERRY",
+                                                                    "PUNJAB",
+                                                                    "RAJASTHAN",
+                                                                    "SIKKIM",
+                                                                    "TAMIL NADU",
+                                                                    "TRIPURA",
+                                                                    "UTTAR PRADESH",
+                                                                    "WEST BENGAL",
+                                                                    "CHHATTISGARH",
+                                                                    "UTTARAKHAND",
+                                                                    "JHARKHAND",
+                                                                    "TELANGANA",
+                                                                    "LADAKH"
+                                                                ],
+                                                                "description": "State where the deductor belongs to."
+                                                            },
+                                                            "postal_code": {
+                                                                "type": "string",
+                                                                "pattern": "[0-9]{6}",
+                                                                "description": "Pincode of the deductor's address"
+                                                            },
+                                                            "email": {
+                                                                "type": "string",
+                                                                "pattern": "^(?!@)(?=.*@)(?=.*\\.).+$",
+                                                                "description": "Email of the Deductor for communication"
+                                                            },
+                                                            "mobile": {
+                                                                "type": [
+                                                                    "string",
+                                                                    "null"
+                                                                ],
+                                                                "description": "Mobile Number of the Deductor for communiction"
+                                                            },
+                                                            "gstin": {
+                                                                "type": [
+                                                                    "string",
+                                                                    "null"
+                                                                ],
+                                                                "pattern": "[0-9]{2}[a-zA-Z]{5}[0-9]{4}[a-zA-Z]{1}[1-9A-Za-z]{1}[CZ]{1}[0-9a-zA-Z]{1}$|^[0-9]{4}[a-zA-Z]{3}[0-9]{5}[uUnNo]{2}[0-9a-zA-Z]{1}",
+                                                                "description": "GST Number of the Deductor (If available)"
+                                                            }
+                                                        },
+                                                        "additionalProperties": false
+                                                    }
+                                                }
+                                            },
+                                            "required": [
+                                                "name",
+                                                "@entity",
+                                                "items"
+                                            ]
+                                        },
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "name": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "responsible_person_list"
+                                                    ]
+                                                },
+                                                "@entity": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "list"
+                                                    ]
+                                                },
+                                                "items": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "designation": {
+                                                                "type": "string",
+                                                                "pattern": "^(?![. ]+$)[^~!@#$%^&*()_+,/?;:’”[\\]{}\\\\]+$",
+                                                                "description": "Cannot be blank/only dots/only spaces or include following characters (`~!@#$%^&*( )_+,./?;:’”[{]}\\)"
+                                                            },
+                                                            "name": {
+                                                                "type": "string",
+                                                                "pattern": "^(?![. ]+$)[^~!@#$%^&*()_+,/?;:’”[\\]{}\\\\]+$",
+                                                                "description": "Cannot be blank/only dots/only spaces or include following characters (`~!@#$%^&*( )_+,./?;:’”[{]}\\)"
+                                                            },
+                                                            "pan": {
+                                                                "type": "string",
+                                                                "pattern": "[A-Z]{3}[PCFTGHLABJ]{1}[A-Z]{1}[0-9]{4}[A-Z]{1}",
+                                                                "description": "PAN of the Responsible Person"
+                                                            },
+                                                            "street": {
+                                                                "type": "string",
+                                                                "description": "Noo Special Characters"
+                                                            },
+                                                            "area": {
+                                                                "type": "string",
+                                                                "description": "Noo Special Characters"
+                                                            },
+                                                            "city": {
+                                                                "type": "string",
+                                                                "description": "Noo Special Characters"
+                                                            },
+                                                            "state": {
+                                                                "type": "string",
+                                                                "enum": [
+                                                                    "ANDAMAN AND NICOBAR ISLANDS",
+                                                                    "ANDHRA PRADESH",
+                                                                    "ARUNACHAL PRADESH",
+                                                                    "ASSAM",
+                                                                    "BIHAR",
+                                                                    "CHANDIGARH",
+                                                                    "DADRA & NAGAR HAVELI AND DAMAN & DIU",
+                                                                    "DELHI",
+                                                                    "GOA",
+                                                                    "GUJARAT",
+                                                                    "HARYANA",
+                                                                    "HIMACHAL PRADESH",
+                                                                    "JAMMU & KASHMIR",
+                                                                    "KARNATAKA",
+                                                                    "KERALA",
+                                                                    "LAKSHWADEEP",
+                                                                    "MADHYA PRADESH",
+                                                                    "MAHARASHTRA",
+                                                                    "MANIPUR",
+                                                                    "MEGHALAYA",
+                                                                    "MIZORAM",
+                                                                    "NAGALAND",
+                                                                    "ODISHA",
+                                                                    "PONDICHERRY",
+                                                                    "PUNJAB",
+                                                                    "RAJASTHAN",
+                                                                    "SIKKIM",
+                                                                    "TAMIL NADU",
+                                                                    "TRIPURA",
+                                                                    "UTTAR PRADESH",
+                                                                    "WEST BENGAL",
+                                                                    "CHHATTISGARH",
+                                                                    "UTTARAKHAND",
+                                                                    "JHARKHAND",
+                                                                    "TELANGANA",
+                                                                    "LADAKH"
+                                                                ],
+                                                                "description": "State where the Responsible Person resides"
+                                                            },
+                                                            "postal_code": {
+                                                                "type": "string",
+                                                                "pattern": "[0-9]{6}",
+                                                                "description": "Pincode of the Responsbile Person's address"
+                                                            },
+                                                            "email": {
+                                                                "type": "string",
+                                                                "pattern": "^(?!@)(?=.*@)(?=.*\\.).+$",
+                                                                "description": "Email of the Responsible Person for communication"
+                                                            },
+                                                            "mobile": {
+                                                                "type": "string",
+                                                                "description": "Mobile Number of the Responsible Person for communiction"
+                                                            }
+                                                        },
+                                                        "additionalProperties": false
+                                                    }
+                                                }
+                                            },
+                                            "required": [
+                                                "name",
+                                                "@entity",
+                                                "items"
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "required": [
+                            "name",
+                            "@entity",
+                            "blocks"
+                        ]
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "enum": [
+                                    "payee_sheet"
+                                ]
+                            },
+                            "@entity": {
+                                "type": "string",
+                                "enum": [
+                                    "sheet"
+                                ]
+                            },
+                            "blocks": {
+                                "type": "array",
+                                "items": {
+                                    "oneOf": [
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "name": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "payee_table"
+                                                    ]
+                                                },
+                                                "@entity": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "table"
+                                                    ]
+                                                },
+                                                "header": {
+                                                    "type": "array",
+                                                    "items": [
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "sr_no"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "pan"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "name"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "opting_new_regime"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "employee_category"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "is_pan_operative"
+                                                            ]
+                                                        }
+                                                    ],
+                                                    "additionalItems": false,
+                                                    "minItems": 6,
+                                                    "maxItems": 6
+                                                },
+                                                "rows": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "array",
+                                                        "items": [
+                                                            {
+                                                                "type": "integer",
+                                                                "minimum": 1,
+                                                                "description": "Running Identifier of the Payee in the workboook"
+                                                            },
+                                                            {
+                                                                "type": "string",
+                                                                "pattern": "[A-Z]{3}[PCFTGHLABJ]{1}[A-Z]{1}[0-9]{4}[A-Z]{1}",
+                                                                "description": "PAN of the Payee. Allow \"PANNOTAVBL\", \"PANAPPLIED\", \"PANINVALID\""
+                                                            },
+                                                            {
+                                                                "type": "string",
+                                                                "description": "Name of the Payee"
+                                                            },
+                                                            {
+                                                                "type": "boolean",
+                                                                "description": "Allow true and false"
+                                                            },
+                                                            {
+                                                                "type": "string",
+                                                                "enum": [
+                                                                    "women",
+                                                                    "senior_citizen",
+                                                                    "super_senior_citizen",
+                                                                    "general"
+                                                                ],
+                                                                "description": "category of employee the payee belongs to"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "boolean",
+                                                                    "null"
+                                                                ],
+                                                                "enum": [
+                                                                    "true",
+                                                                    "false"
+                                                                ],
+                                                                "description": "Whether the payee's PAN is operative"
+                                                            }
+                                                        ],
+                                                        "additionalItems": false,
+                                                        "minItems": 6,
+                                                        "maxItems": 6
+                                                    }
+                                                }
+                                            },
+                                            "required": [
+                                                "name",
+                                                "@entity",
+                                                "header",
+                                                "rows"
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "required": [
+                            "name",
+                            "@entity",
+                            "blocks"
+                        ]
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "enum": [
+                                    "challan_sheet"
+                                ]
+                            },
+                            "@entity": {
+                                "type": "string",
+                                "enum": [
+                                    "sheet"
+                                ]
+                            },
+                            "blocks": {
+                                "type": "array",
+                                "items": {
+                                    "oneOf": [
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "name": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "challan_table"
+                                                    ]
+                                                },
+                                                "@entity": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "table"
+                                                    ]
+                                                },
+                                                "header": {
+                                                    "type": "array",
+                                                    "items": [
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "challan_serial"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "bsr_code"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "paid_date_epoch"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "minor_head"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "tds_amount"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "surcharge"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "health_and_education_cess"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "interest"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "late_filing_fees"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "other_penalty"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "utilized_amount"
+                                                            ]
+                                                        }
+                                                    ],
+                                                    "additionalItems": false,
+                                                    "minItems": 11,
+                                                    "maxItems": 11
+                                                },
+                                                "rows": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "array",
+                                                        "items": [
+                                                            {
+                                                                "type": "string",
+                                                                "pattern": "[0-9]{5}",
+                                                                "description": "Challan Serial Number"
+                                                            },
+                                                            {
+                                                                "type": "string",
+                                                                "pattern": "[0-9]{7}",
+                                                                "description": "BSR Code on the Challan"
+                                                            },
+                                                            {
+                                                                "type": "long",
+                                                                "description": "Date at which Challan was paid to the government"
+                                                            },
+                                                            {
+                                                                "type": "string",
+                                                                "enum": [
+                                                                    "tds_payable",
+                                                                    "tds_regular_assessment_raised_by_it_dept"
+                                                                ],
+                                                                "description": "Minor Head under which TDS is deposited"
+                                                            },
+                                                            {
+                                                                "type": "integer",
+                                                                "maximum": 999999999999999,
+                                                                "description": "Amount of TDS deposited through this challan"
+                                                            },
+                                                            {
+                                                                "type": "integer",
+                                                                "maximum": 999999999999999,
+                                                                "description": "Amount of Surcharge deposited through this challan"
+                                                            },
+                                                            {
+                                                                "type": "integer",
+                                                                "maximum": 999999999999999,
+                                                                "description": "Amount of Health and Education Cess deposited through this challan"
+                                                            },
+                                                            {
+                                                                "type": "integer",
+                                                                "maximum": 999999999999999,
+                                                                "description": "Amount of Interest deposited through this challan"
+                                                            },
+                                                            {
+                                                                "type": "integer",
+                                                                "maximum": 999999999999999,
+                                                                "description": "Amount of Late Filling Fees deposited through this challan"
+                                                            },
+                                                            {
+                                                                "type": "integer",
+                                                                "maximum": 999999999999999,
+                                                                "description": "Amount of Other Penaltydeposited through this challan"
+                                                            },
+                                                            {
+                                                                "type": "integer",
+                                                                "maximum": 999999999999999,
+                                                                "description": "Total Amount of Challan Utilised\nin previous returns."
+                                                            }
+                                                        ],
+                                                        "additionalItems": false,
+                                                        "minItems": 11,
+                                                        "maxItems": 11
+                                                    }
+                                                }
+                                            },
+                                            "required": [
+                                                "name",
+                                                "@entity",
+                                                "header",
+                                                "rows"
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "required": [
+                            "name",
+                            "@entity",
+                            "blocks"
+                        ]
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "enum": [
+                                    "payment_sheet"
+                                ]
+                            },
+                            "@entity": {
+                                "type": "string",
+                                "enum": [
+                                    "sheet"
+                                ]
+                            },
+                            "blocks": {
+                                "type": "array",
+                                "items": {
+                                    "oneOf": [
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "name": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "payment_table"
+                                                    ]
+                                                },
+                                                "@entity": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "table"
+                                                    ]
+                                                },
+                                                "header": {
+                                                    "type": "array",
+                                                    "items": [
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "payee_sr_no"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "challan_serial"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "bsr_code"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "nature_of_payment"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "payment_amount"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "payment_date_epoch"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "tds_amount"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "surcharge"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "health_and_education_cess"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "deduction_date_epoch"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "reason_for_lower_deduction"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "certificate_number"
+                                                            ]
+                                                        }
+                                                    ],
+                                                    "additionalItems": false,
+                                                    "minItems": 12,
+                                                    "maxItems": 12
+                                                },
+                                                "rows": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "array",
+                                                        "items": [
+                                                            {
+                                                                "type": "integer",
+                                                                "minimum": 1,
+                                                                "description": "Identifier of the Payee from the payee_sheet"
+                                                            },
+                                                            {
+                                                                "type": "string",
+                                                                "pattern": "[0-9]{5}",
+                                                                "description": "Challan Serial Number of the challan used to deposit TDS of this Payment"
+                                                            },
+                                                            {
+                                                                "type": "string",
+                                                                "pattern": "[0-9]{7}",
+                                                                "description": "BSR Code on the Challan used to deposit TDS of this Payment"
+                                                            },
+                                                            {
+                                                                "type": "string",
+                                                                "enum": [
+                                                                    "payout_to_government_employees",
+                                                                    "payout_to_employees",
+                                                                    "payout_to_union_government_employees",
+                                                                    "deduction_for_specified_senior_citizens"
+                                                                ],
+                                                                "description": "The kind of Payment made by the Payer to the Payee"
+                                                            },
+                                                            {
+                                                                "type": "number",
+                                                                "maximum": 1000000000000000,
+                                                                "description": "The Payment amount made to the Payee"
+                                                            },
+                                                            {
+                                                                "type": "long",
+                                                                "description": "Date of Payment"
+                                                            },
+                                                            {
+                                                                "type": "number",
+                                                                "maximum": 1000000000000000,
+                                                                "description": "TDS Deducted from the Payment Amount"
+                                                            },
+                                                            {
+                                                                "type": "number",
+                                                                "maximum": 1000000000000000,
+                                                                "description": "Surcharge Deducted from the Payment Amount"
+                                                            },
+                                                            {
+                                                                "type": "number",
+                                                                "maximum": 1000000000000000,
+                                                                "description": "Cess Deducted from the Payment Amount"
+                                                            },
+                                                            {
+                                                                "type": "long",
+                                                                "description": "Date at which the Deduction took place"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "string",
+                                                                    "null"
+                                                                ],
+                                                                "enum": [
+                                                                    "lower_deduction_no_deduction_on_account_of_certificate_u_s_197",
+                                                                    "no_deduction_on_account_of_certificate_u_s_197_a",
+                                                                    "deduction_of_tax_at_higher_rate_due_to_non_availability_of_pan"
+                                                                ],
+                                                                "description": "Reason for Lower Deduction of TDS Amount than the prescribed rate in force"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "string",
+                                                                    "null"
+                                                                ],
+                                                                "description": "TDS Lower Deduction Certificate Number"
+                                                            }
+                                                        ],
+                                                        "additionalItems": false,
+                                                        "minItems": 12,
+                                                        "maxItems": 12
+                                                    }
+                                                }
+                                            },
+                                            "required": [
+                                                "name",
+                                                "@entity",
+                                                "header",
+                                                "rows"
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "required": [
+                            "name",
+                            "@entity",
+                            "blocks"
+                        ]
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "enum": [
+                                    "salary_detail_sheet"
+                                ]
+                            },
+                            "@entity": {
+                                "type": "string",
+                                "enum": [
+                                    "sheet"
+                                ]
+                            },
+                            "blocks": {
+                                "type": "array",
+                                "items": {
+                                    "oneOf": [
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "name": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "salary_detail_table"
+                                                    ]
+                                                },
+                                                "@entity": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "table"
+                                                    ]
+                                                },
+                                                "header": {
+                                                    "type": "array",
+                                                    "items": [
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "payee_sr_no"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "employment_from_date_epoch"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "employment_to_date_epoch"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "gross_salary_from_previous_employers"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "tds_by_previous_employers"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "income_tax_payable"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "surcharge"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "health_and_education_cess"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "tds_on_salary"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "other_tds_or_tcs_amount_as_per_section_192_2b"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "salary_as_per_provisions_contained_in_section_17_1"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "value_of_perquisites_us_17_2"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "profits_in_lieu_of_salary_us_17_3"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "travel_concession_or_assistance_us_10_5"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "death_cum_retirement_gratuity_us_10_10"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "commuted_value_of_pension_us_10_10_a"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "cash_equivalent_of_leave_salary_encashment_us_10_10_aa"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "house_rent_allowance_us_10_13_a"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "other_special_allowances_under_section_10_14"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "landlord_1_name"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "landlord_1_pan"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "landlord_2_name"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "landlord_2_pan"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "landlord_3_name"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "landlord_3_pan"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "landlord_4_name"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "landlord_4_pan"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "total_amount_of_any_other_exemption_us_10"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "standard_deduction_us_16_ia"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "entertainment_allowance_us_16_ii"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "tax_on_employment_us_16_iii"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "income_from_house_property_reported_by_employee_offered_for_tds"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "lender_1_name"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "lender_1_pan"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "lender_2_name"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "lender_2_pan"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "lender_3_name"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "lender_3_pan"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "lender_4_name"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "lender_4_pan"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "income_under_the_head_other_sources_offered_for_tds"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "gross_amount_us_80_c"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "deductible_amount_us_80_c"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "gross_amount_us_80_ccc"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "deductible_amount_us_80_ccc"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "gross_amount_us_80_ccd_1"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "deductible_amount_us_80_ccd_1"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "gross_amount_us_80_ccd_1_b"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "deductible_amount_us_80_ccd_1_b"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "gross_amount_us_80_ccd_2"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "deductible_amount_us_80_ccd_2"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "gross_amount_us_80_ccg"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "deductible_amount_us_80_ccg"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "gross_amount_us_80_cch"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "deductible_amount_us_80_cch"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "gross_amount_us_80_d"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "deductible_amount_us_80_d"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "gross_amount_us_80_dd"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "deductible_amount_us_80_dd"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "qualifying_amount_us_80_dd"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "gross_amount_us_80_e"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "deductible_amount_us_80_e"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "gross_amount_us_80_ee"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "deductible_amount_us_80_ee"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "qualifying_amount_us_80_ee"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "gross_amount_us_80_eea"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "deductible_amount_us_80_eea"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "qualifying_amount_us_80_eea"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "gross_amount_us_80_g"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "deductible_amount_us_80_g"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "qualifying_amount_us_80_g"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "gross_amount_us_80_gg"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "deductible_amount_us_80_gg"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "qualifying_amount_us_80_gg"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "gross_amount_us_80_ggc"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "deductible_amount_us_80_ggc"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "qualifying_amount_us_80_ggc"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "gross_amount_us_80_tta"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "deductible_amount_us_80_tta"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "qualifying_amount_us_80_tta"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "gross_amount_us_80_ttb"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "deductible_amount_us_80_ttb"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "qualifying_amount_us_80_ttb"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "gross_amount_us_80_u"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "deductible_amount_us_80_u"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "qualifying_amount_us_80_u"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "gross_amount_for_other_deductions"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "deductible_amount_for_other_deductions"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "qualifying_amount_for_other_deductions"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "relief_us_87_a"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "relief_us_89"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "payments_from_super_annuation_fund"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "name_of_fund"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "fund_contribution_from"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "fund_contribution_to"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "average_rate_of_deduction_of_tax"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "tds_on_repayment_from_super_annuation_fund"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "gross_pension_under_194p"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "interest_income_by_bank_under_194p"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "net_tax_payable_under_194p"
+                                                            ]
+                                                        }
+                                                    ],
+                                                    "additionalItems": false,
+                                                    "minItems": 100,
+                                                    "maxItems": 100
+                                                },
+                                                "rows": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "array",
+                                                        "items": [
+                                                            {
+                                                                "type": "number",
+                                                                "minimum": 1
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "long",
+                                                                    "null"
+                                                                ],
+                                                                "description": "For 192 Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "long",
+                                                                    "null"
+                                                                ],
+                                                                "description": "For 192 Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 192 Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 192 Record Only"
+                                                            },
+                                                            {
+                                                                "type": "number",
+                                                                "maximum": 1000000000000000
+                                                            },
+                                                            {
+                                                                "type": "number",
+                                                                "maximum": 1000000000000000
+                                                            },
+                                                            {
+                                                                "type": "number",
+                                                                "maximum": 1000000000000000
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 192 Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 192 Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 192 Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 192 Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 192 Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 192 Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 192 Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 192 Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 192 Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 192 Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 192 Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "string",
+                                                                    "null"
+                                                                ]
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "string",
+                                                                    "null"
+                                                                ],
+                                                                "pattern": "[A-Z]{3}[PCFTGHLABJ]{1}[A-Z]{1}[0-9]{4}[A-Z]{1}"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "string",
+                                                                    "null"
+                                                                ]
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "string",
+                                                                    "null"
+                                                                ],
+                                                                "pattern": "[A-Z]{3}[PCFTGHLABJ]{1}[A-Z]{1}[0-9]{4}[A-Z]{1}"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "string",
+                                                                    "null"
+                                                                ]
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "string",
+                                                                    "null"
+                                                                ],
+                                                                "pattern": "[A-Z]{3}[PCFTGHLABJ]{1}[A-Z]{1}[0-9]{4}[A-Z]{1}"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "string",
+                                                                    "null"
+                                                                ]
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "string",
+                                                                    "null"
+                                                                ],
+                                                                "pattern": "[A-Z]{3}[PCFTGHLABJ]{1}[A-Z]{1}[0-9]{4}[A-Z]{1}"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 192 Record Only"
+                                                            },
+                                                            {
+                                                                "type": "number",
+                                                                "maximum": 1000000000000000
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 192 Record Only"
+                                                            },
+                                                            {
+                                                                "type": "number",
+                                                                "maximum": 1000000000000000
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "minimum": -1000000000000000,
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 192 Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "string",
+                                                                    "null"
+                                                                ]
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "string",
+                                                                    "null"
+                                                                ],
+                                                                "pattern": "[A-Z]{3}[PCFTGHLABJ]{1}[A-Z]{1}[0-9]{4}[A-Z]{1}"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "string",
+                                                                    "null"
+                                                                ]
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "string",
+                                                                    "null"
+                                                                ],
+                                                                "pattern": "[A-Z]{3}[PCFTGHLABJ]{1}[A-Z]{1}[0-9]{4}[A-Z]{1}"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "string",
+                                                                    "null"
+                                                                ]
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "string",
+                                                                    "null"
+                                                                ],
+                                                                "pattern": "[A-Z]{3}[PCFTGHLABJ]{1}[A-Z]{1}[0-9]{4}[A-Z]{1}"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "string",
+                                                                    "null"
+                                                                ]
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "string",
+                                                                    "null"
+                                                                ],
+                                                                "pattern": "[A-Z]{3}[PCFTGHLABJ]{1}[A-Z]{1}[0-9]{4}[A-Z]{1}"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 192 Record Only"
+                                                            },
+                                                            {
+                                                                "type": "number",
+                                                                "maximum": 1000000000000000
+                                                            },
+                                                            {
+                                                                "type": "number",
+                                                                "maximum": 1000000000000000
+                                                            },
+                                                            {
+                                                                "type": "number",
+                                                                "maximum": 1000000000000000
+                                                            },
+                                                            {
+                                                                "type": "number",
+                                                                "maximum": 1000000000000000
+                                                            },
+                                                            {
+                                                                "type": "number",
+                                                                "maximum": 1000000000000000
+                                                            },
+                                                            {
+                                                                "type": "number",
+                                                                "maximum": 1000000000000000
+                                                            },
+                                                            {
+                                                                "type": "number",
+                                                                "maximum": 1000000000000000
+                                                            },
+                                                            {
+                                                                "type": "number",
+                                                                "maximum": 1000000000000000
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 192 Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 192 Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 192 Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 192 Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 192 Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 192 Record Only"
+                                                            },
+                                                            {
+                                                                "type": "number",
+                                                                "maximum": 1000000000000000
+                                                            },
+                                                            {
+                                                                "type": "number",
+                                                                "maximum": 1000000000000000
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 194P Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 194P Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 194P Record Only"
+                                                            },
+                                                            {
+                                                                "type": "number",
+                                                                "maximum": 1000000000000000
+                                                            },
+                                                            {
+                                                                "type": "number",
+                                                                "maximum": 1000000000000000
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 194P Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 194P Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 194P Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 194P Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 194P Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 194P Record Only"
+                                                            },
+                                                            {
+                                                                "type": "number",
+                                                                "maximum": 1000000000000000
+                                                            },
+                                                            {
+                                                                "type": "number",
+                                                                "maximum": 1000000000000000
+                                                            },
+                                                            {
+                                                                "type": "number",
+                                                                "maximum": 1000000000000000
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 194P Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 194P Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 194P Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 194P Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 194P Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 194P Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 192 Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 192 Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 192 Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 194P Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 194P Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 194P Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 194P Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 194P Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 194P Record Only"
+                                                            },
+                                                            {
+                                                                "type": "number",
+                                                                "maximum": 1000000000000000
+                                                            },
+                                                            {
+                                                                "type": "number",
+                                                                "maximum": 1000000000000000
+                                                            },
+                                                            {
+                                                                "type": "number",
+                                                                "maximum": 1000000000000000
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000
+                                                            },
+                                                            {
+                                                                "type": "number",
+                                                                "maximum": 1000000000000000
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "string",
+                                                                    "null"
+                                                                ]
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "long",
+                                                                    "null"
+                                                                ]
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "long",
+                                                                    "null"
+                                                                ]
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 9999999.9999
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 194P Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 194P Record Only"
+                                                            },
+                                                            {
+                                                                "type": [
+                                                                    "number",
+                                                                    "null"
+                                                                ],
+                                                                "maximum": 1000000000000000,
+                                                                "description": "For 194P Record Only"
+                                                            }
+                                                        ],
+                                                        "additionalItems": false,
+                                                        "minItems": 100,
+                                                        "maxItems": 100
+                                                    }
+                                                }
+                                            },
+                                            "required": [
+                                                "name",
+                                                "@entity",
+                                                "header",
+                                                "rows"
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "required": [
+                            "name",
+                            "@entity",
+                            "blocks"
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    "required": [
+        "name",
+        "@entity",
+        "sheets"
+    ]
+}

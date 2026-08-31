@@ -12,6 +12,16 @@ app_license = "gpl-3.0"
 
 required_apps = ["frappe/hrms"]
 
+# India Payroll is a companion app for Frappe HR, so it doesn't take its own apps-screen icon.
+# Instead it pins its workspace into HRMS's workspace dock (rail). Who sees it is controlled by
+# the workspace's own Roles table.
+add_to_workspace_dock = [
+	{
+		"app": "hrms",
+		"workspace": "India Payroll",
+	}
+]
+
 # Each item in the list will be shown as an app in the apps page
 # add_to_apps_screen = [
 # 	{
@@ -19,7 +29,6 @@ required_apps = ["frappe/hrms"]
 # 		"logo": "/assets/india_payroll/logo.png",
 # 		"title": "India Payroll",
 # 		"route": "/india_payroll",
-# 		"has_permission": "india_payroll.api.permission.has_app_permission"
 # 	}
 # ]
 
@@ -28,7 +37,7 @@ required_apps = ["frappe/hrms"]
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/india_payroll/css/india_payroll.css"
-# app_include_js = "/assets/india_payroll/js/india_payroll.js"
+app_include_js = "/assets/india_payroll/js/india_payroll.js"
 
 # include js, css files in header of web template
 # web_include_css = "/assets/india_payroll/css/india_payroll.css"
@@ -54,6 +63,11 @@ doctype_list_js = {"Salary Structure Assignment": "public/js/salary_structure_as
 # ------------------
 # include app icons in desk
 # app_include_icons = "india_payroll/public/icons.svg"
+
+# Boot
+# ----
+
+boot_session = "india_payroll.boot.set_bootinfo"
 
 # Home Pages
 # ----------
@@ -138,23 +152,15 @@ before_uninstall = "india_payroll.uninstall.before_uninstall"
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
-# 	"all": [
-# 		"india_payroll.tasks.all"
-# 	],
-# 	"daily": [
-# 		"india_payroll.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"india_payroll.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"india_payroll.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"india_payroll.tasks.monthly"
-# 	],
-# }
+scheduler_events = {
+	"cron": {
+		# Poll open Sandbox filing jobs every 5 minutes.
+		"*/5 * * * *": [
+			"india_payroll.india_payroll.tds.filing.poll_open_jobs",
+			"india_payroll.india_payroll.tds.form16.poll_form16_jobs",
+		],
+	},
+}
 
 # Testing
 # -------
@@ -190,6 +196,17 @@ before_uninstall = "india_payroll.uninstall.before_uninstall"
 doc_events = {
 	"Salary Structure Assignment": {
 		"validate": "india_payroll.india_payroll.professional_tax.validate_employment_state",
+	},
+	"Payroll Settings": {
+		"validate": [
+			"india_payroll.india_payroll.tds.settings.clear_token_cache_on_change",
+			"india_payroll.india_payroll.company_settings.validate_company_payroll_settings",
+			"india_payroll.india_payroll.tds.settings.validate_tds_filing_settings",
+			"india_payroll.india_payroll.tds.settings.clear_token_cache_on_change",
+		],
+	},
+	"Company": {
+		"validate": "india_payroll.india_payroll.tds.settings.validate_deductor_details",
 	},
 }
 #

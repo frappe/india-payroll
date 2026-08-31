@@ -1,0 +1,256 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-06-26 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "company",
+  "tan",
+  "naming_series",
+  "column_break_head",
+  "financial_year",
+  "quarter",
+  "deduction_month",
+  "section",
+  "challan_section",
+  "challan_date",
+  "bsr_code",
+  "challan_serial_no",
+  "payment_mode",
+  "bank_name",
+  "column_break_challan",
+  "deposit_amount",
+  "minor_head",
+  "breakup_section",
+  "tds_amount",
+  "surcharge_amount",
+  "education_cess",
+  "column_break_breakup",
+  "interest",
+  "fee",
+  "others",
+  "amendment_section",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "company.tan",
+   "fieldname": "tan",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "TAN",
+   "read_only": 1
+  },
+  {
+   "default": "TDS-CHL-.YYYY.-",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "TDS-CHL-.YYYY.-"
+  },
+  {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "financial_year",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Financial Year",
+   "options": "Fiscal Year",
+   "reqd": 1
+  },
+  {
+   "fieldname": "quarter",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Quarter",
+   "options": "Q1\nQ2\nQ3\nQ4",
+   "reqd": 1
+  },
+  {
+   "default": "192",
+   "description": "TDS section. 192 for salary (Form 24Q).",
+   "fieldname": "section",
+   "fieldtype": "Data",
+   "label": "Section"
+  },
+  {
+   "fieldname": "challan_section",
+   "fieldtype": "Section Break",
+   "label": "Challan Details"
+  },
+  {
+   "fieldname": "challan_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Deposit Date",
+   "reqd": 1
+  },
+  {
+   "description": "7-digit BSR code of the collecting bank branch.",
+   "fieldname": "bsr_code",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "BSR Code",
+   "reqd": 1
+  },
+  {
+   "fieldname": "challan_serial_no",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Challan Serial No",
+   "reqd": 1
+  },
+  {
+   "fieldname": "payment_mode",
+   "fieldtype": "Select",
+   "label": "Payment Mode",
+   "options": "\nNet Banking\nDebit Card\nOver the Counter\nNEFT/RTGS"
+  },
+  {
+   "fieldname": "bank_name",
+   "fieldtype": "Data",
+   "label": "Bank Name"
+  },
+  {
+   "fieldname": "column_break_challan",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "deposit_amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Total Deposited",
+   "options": "Company:company:default_currency",
+   "reqd": 1
+  },
+  {
+   "default": "TDS Payable by Taxpayer (200)",
+   "fieldname": "minor_head",
+   "fieldtype": "Select",
+   "label": "Minor Head",
+   "options": "TDS Payable by Taxpayer (200)\nTDS Regular Assessment (400)"
+  },
+  {
+   "fieldname": "breakup_section",
+   "fieldtype": "Section Break",
+   "label": "Amount Breakup"
+  },
+  {
+   "fieldname": "tds_amount",
+   "fieldtype": "Currency",
+   "label": "TDS",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "surcharge_amount",
+   "fieldtype": "Currency",
+   "label": "Surcharge",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "education_cess",
+   "fieldtype": "Currency",
+   "label": "Education Cess",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "column_break_breakup",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "interest",
+   "fieldtype": "Currency",
+   "label": "Interest",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "fee",
+   "fieldtype": "Currency",
+   "label": "Fee (Sec 234E)",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "others",
+   "fieldtype": "Currency",
+   "label": "Others",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "amendment_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "TDS Challan",
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "description": "Salary month whose TDS this challan pays. Defaults to the month before the challan date (TDS is deposited by the 7th of the following month). Used to map deductees to challans.",
+   "fieldname": "deduction_month",
+   "fieldtype": "Select",
+   "label": "Deduction Month",
+   "options": "\nApril\nMay\nJune\nJuly\nAugust\nSeptember\nOctober\nNovember\nDecember\nJanuary\nFebruary\nMarch"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-06-26 00:00:00.000000",
+ "module": "India Payroll",
+ "name": "TDS Challan",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Payroll Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

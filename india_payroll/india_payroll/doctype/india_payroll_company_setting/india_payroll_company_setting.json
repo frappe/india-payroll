@@ -1,0 +1,78 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-08-27 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "company",
+  "esic_registration_number",
+  "epf_establishment_code",
+  "column_break_registrations",
+  "professional_tax_registration_number",
+  "lwf_registration_number"
+ ],
+ "fields": [
+  {
+   "columns": 2,
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "description": "17-digit ESIC employer code for this company.",
+   "fieldname": "esic_registration_number",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "ESIC Registration Number",
+   "translatable": 0
+  },
+  {
+   "columns": 2,
+   "description": "EPFO Establishment Code used in this company's ECR file header.",
+   "fieldname": "epf_establishment_code",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "EPF Establishment Code",
+   "translatable": 0
+  },
+  {
+   "fieldname": "column_break_registrations",
+   "fieldtype": "Column Break"
+  },
+  {
+   "columns": 2,
+   "description": "State Professional Tax enrolment / registration number.",
+   "fieldname": "professional_tax_registration_number",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Professional Tax Registration Number",
+   "translatable": 0
+  },
+  {
+   "columns": 2,
+   "description": "State Labour Welfare Fund establishment registration number.",
+   "fieldname": "lwf_registration_number",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "LWF Registration Number",
+   "translatable": 0
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-08-27 00:00:00.000000",
+ "module": "India Payroll",
+ "name": "India Payroll Company Setting",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

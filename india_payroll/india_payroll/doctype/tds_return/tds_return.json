@@ -1,0 +1,636 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "format:{tan}-{form_type}-{quarter}-{financial_year}",
+ "creation": "2026-06-26 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "company",
+  "tan",
+  "pan",
+  "column_break_head",
+  "financial_year",
+  "quarter",
+  "form_type",
+  "filing_config_section",
+  "return_type",
+  "previous_receipt_number",
+  "column_break_cfg",
+  "filing_status",
+  "deductor_section",
+  "deductor_name",
+  "deductor_address",
+  "deductor_contact",
+  "responsible_person_contact",
+  "responsible_person_name",
+  "responsible_person_pan",
+  "column_break_ded",
+  "responsible_person_designation",
+  "deductor_branch",
+  "deductor_type_code",
+  "deductor_gstin",
+  "deductor_email",
+  "deductor_contact_country_code",
+  "deductor_contact_number",
+  "deductor_address_section",
+  "deductor_flat_door_block_number",
+  "deductor_post_office",
+  "deductor_road_street",
+  "deductor_area_locality",
+  "column_break_addr",
+  "deductor_district",
+  "deductor_state",
+  "deductor_postal_code",
+  "deductor_country",
+  "govt_section",
+  "government_state_code",
+  "ministry_code",
+  "column_break_govt",
+  "ministry_name_other",
+  "account_office_identification_number",
+  "rp_address_section",
+  "rp_address",
+  "rp_email",
+  "rp_contact_country_code",
+  "rp_contact_number",
+  "rp_flat_door_block_number",
+  "rp_post_office",
+  "column_break_rp",
+  "rp_road_street",
+  "rp_area_locality",
+  "rp_district",
+  "rp_state",
+  "rp_postal_code",
+  "rp_country",
+  "deductees_section",
+  "deductees",
+  "totals_section",
+  "total_amount_paid",
+  "total_tax_deducted",
+  "column_break_tot",
+  "total_tax_deposited",
+  "validation_section",
+  "validation_issues",
+  "files_section",
+  "txt_file",
+  "csi_file",
+  "csi_reference_id",
+  "csi_mobile_number",
+  "sheet_json_file",
+  "column_break_files",
+  "fvu_file",
+  "form_27a",
+  "ack_section",
+  "token_number",
+  "acknowledgement_number",
+  "column_break_ack",
+  "filing_date",
+  "actions_section",
+  "filing_actions",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "fetch_from": "company.tan",
+   "fetch_if_empty": 1,
+   "fieldname": "tan",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "TAN",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "company.tax_id",
+   "fetch_if_empty": 1,
+   "fieldname": "pan",
+   "fieldtype": "Data",
+   "label": "Deductor PAN",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "financial_year",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Financial Year",
+   "options": "Fiscal Year",
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "fieldname": "quarter",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Quarter",
+   "options": "Q1\nQ2\nQ3\nQ4",
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "default": "24Q",
+   "fieldname": "form_type",
+   "fieldtype": "Select",
+   "label": "Form Type",
+   "options": "24Q",
+   "read_only": 1
+  },
+  {
+   "fieldname": "filing_config_section",
+   "fieldtype": "Section Break",
+   "label": "Filing"
+  },
+  {
+   "default": "Original",
+   "fieldname": "return_type",
+   "fieldtype": "Select",
+   "label": "Return Type",
+   "options": "Original\nRevised"
+  },
+  {
+   "depends_on": "eval:doc.return_type=='Revised'",
+   "description": "15-digit provisional receipt number of the original/last accepted return.",
+   "fieldname": "previous_receipt_number",
+   "fieldtype": "Data",
+   "label": "Previous Receipt Number",
+   "mandatory_depends_on": "eval:doc.return_type=='Revised'"
+  },
+  {
+   "fieldname": "column_break_cfg",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Draft",
+   "fieldname": "filing_status",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Filing Status",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "deductor_section",
+   "fieldtype": "Section Break",
+   "label": "Deductor & Responsible Person"
+  },
+  {
+   "fetch_from": "company.company_name",
+   "fetch_if_empty": 1,
+   "fieldname": "deductor_name",
+   "fieldtype": "Data",
+   "label": "Deductor Name",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "company.responsible_person_name",
+   "fetch_if_empty": 1,
+   "fieldname": "responsible_person_name",
+   "fieldtype": "Data",
+   "label": "Responsible Person Name"
+  },
+  {
+   "fetch_from": "company.responsible_person_pan",
+   "fetch_if_empty": 1,
+   "fieldname": "responsible_person_pan",
+   "fieldtype": "Data",
+   "label": "Responsible Person PAN"
+  },
+  {
+   "fieldname": "column_break_ded",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fetch_from": "company.responsible_person_designation",
+   "fetch_if_empty": 1,
+   "fieldname": "responsible_person_designation",
+   "fieldtype": "Data",
+   "label": "Responsible Person Designation"
+  },
+  {
+   "fieldname": "deductees_section",
+   "fieldtype": "Section Break",
+   "label": "Deductee-wise Deductions"
+  },
+  {
+   "fieldname": "deductees",
+   "fieldtype": "Table",
+   "label": "Deductees",
+   "options": "TDS Return Deductee"
+  },
+  {
+   "fieldname": "totals_section",
+   "fieldtype": "Section Break",
+   "label": "Totals"
+  },
+  {
+   "fieldname": "total_amount_paid",
+   "fieldtype": "Currency",
+   "label": "Total Amount Paid",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_tax_deducted",
+   "fieldtype": "Currency",
+   "label": "Total Tax Deducted",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_tot",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "total_tax_deposited",
+   "fieldtype": "Currency",
+   "label": "Total Tax Deposited (Challans)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "validation_section",
+   "fieldtype": "Section Break",
+   "label": "Validation"
+  },
+  {
+   "fieldname": "validation_issues",
+   "fieldtype": "Code",
+   "label": "Validation Issues",
+   "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "files_section",
+   "fieldtype": "Section Break",
+   "label": "Generated Files"
+  },
+  {
+   "fieldname": "txt_file",
+   "fieldtype": "Attach",
+   "label": "Form 24Q TXT",
+   "read_only": 1
+  },
+  {
+   "fieldname": "csi_file",
+   "fieldtype": "Attach",
+   "label": "CSI File",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sheet_json_file",
+   "fieldtype": "Attach",
+   "label": "Sheet JSON (audit)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_files",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "fvu_file",
+   "fieldtype": "Attach",
+   "label": "FVU File",
+   "read_only": 1
+  },
+  {
+   "fieldname": "form_27a",
+   "fieldtype": "Attach",
+   "label": "Form 27A",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ack_section",
+   "fieldtype": "Section Break",
+   "label": "Acknowledgement"
+  },
+  {
+   "fieldname": "token_number",
+   "fieldtype": "Data",
+   "label": "Token Number",
+   "read_only": 1
+  },
+  {
+   "fieldname": "acknowledgement_number",
+   "fieldtype": "Data",
+   "label": "Provisional Receipt Number",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_ack",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "filing_date",
+   "fieldtype": "Datetime",
+   "label": "Filing Date",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "actions_section",
+   "fieldtype": "Section Break",
+   "label": "Filing Log"
+  },
+  {
+   "fieldname": "filing_actions",
+   "fieldtype": "Table",
+   "label": "Filing Actions",
+   "options": "TDS Return Action",
+   "read_only": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "TDS Return",
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "deductor_branch",
+   "fieldtype": "Data",
+   "label": "Branch / Division"
+  },
+  {
+   "description": "Single-letter ITD code, e.g. K (company), A (government).",
+   "fieldname": "deductor_type_code",
+   "fieldtype": "Data",
+   "label": "Deductor Type Code"
+  },
+  {
+   "fieldname": "deductor_gstin",
+   "fieldtype": "Data",
+   "label": "GSTIN"
+  },
+  {
+   "fieldname": "deductor_email",
+   "fieldtype": "Data",
+   "label": "Deductor Email",
+   "options": "Email"
+  },
+  {
+   "default": "91",
+   "fieldname": "deductor_contact_country_code",
+   "fieldtype": "Data",
+   "label": "Contact Country Code"
+  },
+  {
+   "fieldname": "deductor_contact_number",
+   "fieldtype": "Data",
+   "label": "Contact Number"
+  },
+  {
+   "fieldname": "deductor_address_section",
+   "fieldtype": "Section Break",
+   "label": "Deductor Address"
+  },
+  {
+   "fieldname": "deductor_flat_door_block_number",
+   "fieldtype": "Data",
+   "label": "Flat / Door / Block No."
+  },
+  {
+   "fieldname": "deductor_post_office",
+   "fieldtype": "Data",
+   "label": "Post Office"
+  },
+  {
+   "fieldname": "deductor_road_street",
+   "fieldtype": "Data",
+   "label": "Road / Street / Block / Sector"
+  },
+  {
+   "fieldname": "deductor_area_locality",
+   "fieldtype": "Data",
+   "label": "Area / Locality"
+  },
+  {
+   "fieldname": "column_break_addr",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
+   "fieldname": "deductor_district",
+   "fieldtype": "Data",
+   "label": "District / City"
+  },
+  {
+   "fieldname": "deductor_state",
+   "fieldtype": "Data",
+   "label": "State"
+  },
+  {
+   "fieldname": "deductor_postal_code",
+   "fieldtype": "Data",
+   "label": "PIN Code"
+  },
+  {
+   "default": "INDIA",
+   "fieldname": "deductor_country",
+   "fieldtype": "Data",
+   "label": "Country"
+  },
+  {
+   "collapsible": 1,
+   "depends_on": "eval:doc.deductor_type_code && ['A','S','D','E','G','H','L','N'].includes(doc.deductor_type_code)",
+   "fieldname": "govt_section",
+   "fieldtype": "Section Break",
+   "label": "Government Deductor"
+  },
+  {
+   "fieldname": "government_state_code",
+   "fieldtype": "Data",
+   "label": "Government State Code"
+  },
+  {
+   "fieldname": "ministry_code",
+   "fieldtype": "Data",
+   "label": "Ministry Code"
+  },
+  {
+   "fieldname": "column_break_govt",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
+   "fieldname": "ministry_name_other",
+   "fieldtype": "Data",
+   "label": "Ministry Name (Other)"
+  },
+  {
+   "fieldname": "account_office_identification_number",
+   "fieldtype": "Data",
+   "label": "AIN"
+  },
+  {
+   "fieldname": "rp_address_section",
+   "fieldtype": "Section Break",
+   "label": "Responsible Person Contact"
+  },
+  {
+   "fieldname": "rp_email",
+   "fieldtype": "Data",
+   "label": "Email",
+   "options": "Email"
+  },
+  {
+   "default": "91",
+   "fieldname": "rp_contact_country_code",
+   "fieldtype": "Data",
+   "label": "Contact Country Code"
+  },
+  {
+   "fieldname": "rp_contact_number",
+   "fieldtype": "Data",
+   "label": "Contact Number"
+  },
+  {
+   "fieldname": "rp_flat_door_block_number",
+   "fieldtype": "Data",
+   "label": "Flat / Door / Block No."
+  },
+  {
+   "fieldname": "rp_post_office",
+   "fieldtype": "Data",
+   "label": "Post Office"
+  },
+  {
+   "fieldname": "column_break_rp",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
+   "fieldname": "rp_road_street",
+   "fieldtype": "Data",
+   "label": "Road / Street / Block / Sector"
+  },
+  {
+   "fieldname": "rp_area_locality",
+   "fieldtype": "Data",
+   "label": "Area / Locality"
+  },
+  {
+   "fieldname": "rp_district",
+   "fieldtype": "Data",
+   "label": "District / City"
+  },
+  {
+   "fieldname": "rp_state",
+   "fieldtype": "Data",
+   "label": "State"
+  },
+  {
+   "fieldname": "rp_postal_code",
+   "fieldtype": "Data",
+   "label": "PIN Code"
+  },
+  {
+   "default": "INDIA",
+   "fieldname": "rp_country",
+   "fieldtype": "Data",
+   "label": "Country"
+  },
+  {
+   "fieldname": "csi_reference_id",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "CSI OTP Reference",
+   "read_only": 1
+  },
+  {
+   "description": "Mobile registered with TRACES for the deductor; the CSI OTP is sent here.",
+   "fieldname": "csi_mobile_number",
+   "fieldtype": "Data",
+   "label": "TRACES Mobile Number"
+  },
+  {
+   "description": "Selecting an address fills the address fields below.",
+   "fieldname": "deductor_address",
+   "fieldtype": "Link",
+   "label": "Deductor Address",
+   "options": "Address"
+  },
+  {
+   "description": "Fills the deductor's email and phone.",
+   "fieldname": "deductor_contact",
+   "fieldtype": "Link",
+   "label": "Deductor Contact",
+   "options": "Contact"
+  },
+  {
+   "description": "Fills the name, designation, email and phone below.",
+   "fieldname": "responsible_person_contact",
+   "fieldtype": "Link",
+   "label": "Responsible Person",
+   "options": "Contact"
+  },
+  {
+   "description": "Leave blank to reuse the deductor's address.",
+   "fieldname": "rp_address",
+   "fieldtype": "Link",
+   "label": "Responsible Person Address",
+   "options": "Address"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-06-26 00:00:00.000000",
+ "module": "India Payroll",
+ "name": "TDS Return",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Payroll Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
