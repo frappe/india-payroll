@@ -292,14 +292,21 @@ def _aggregate_salary_detail(slip_names: list[str]) -> dict:
 
 	Returns: { slip_name: { "pf_wage": ..., "Provident Fund": ..., "Voluntary Provident Fund": ... } }
 	"""
-	if not slip_names:
+	if not company_by_slip:
 		return {}
+
+	# Cache hra_component per company so multi-company reports do one lookup each.
+	hra_by_company: dict[str, str | None] = {}
+	for company in set(company_by_slip.values()):
+		hra_by_company[company] = (
+			frappe.db.get_value("Company", company, "hra_component") if company else None
+		)
 
 	rows = frappe.get_all(
 		"Salary Detail",
 		filters={
 			"parenttype": "Salary Slip",
-			"parent": ("in", slip_names),
+			"parent": ("in", list(company_by_slip)),
 		},
 		fields=["parent", "parentfield", "salary_component", "amount", "additional_salary"],
 	)
