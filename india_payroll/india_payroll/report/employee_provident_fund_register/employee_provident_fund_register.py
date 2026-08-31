@@ -8,6 +8,10 @@ from frappe import _
 from frappe.query_builder import DocType
 from frappe.utils import flt
 
+from india_payroll.india_payroll.company_settings import (
+	get_applicable_companies,
+	is_multi_company_enabled,
+)
 from india_payroll.india_payroll.epf import (
 	EPF_EMPLOYEE_COMPONENT,
 	EPF_EMPLOYER_RATE,
@@ -145,6 +149,8 @@ def get_columns():
 def get_data(filters):
 	date_range = _get_date_range(filters)
 
+	applicable_companies = get_applicable_companies("epf")
+
 	SS = DocType("Salary Slip")
 	Emp = DocType("Employee")
 
@@ -203,6 +209,7 @@ def get_data(filters):
 		return []
 
 	totals_by_slip = _aggregate_salary_detail([s.slip for s in slips])
+	slips = _filter_in_scope(slips, totals_by_slip, applicable_companies)
 
 	data = []
 	for s in slips:
@@ -251,6 +258,28 @@ def get_data(filters):
 		)
 
 	return data
+
+
+def _filter_in_scope(slips, totals_by_slip, applicable_companies):
+	"""Drop slips whose company is outside EPF scope, keeping those that already
+	recorded an employee EPF or VPF contribution.
+
+	A company removed from Company Payroll Settings stops accruing new EPF, but
+	the contributions it already deducted have been remitted against its
+	establishment code, so past months must stay reportable and re-exportable.
+	"""
+	if applicable_companies is None:
+		return slips
+
+	return [
+		s
+		for s in slips
+		if s.company in applicable_companies or _has_epf_contribution(totals_by_slip.get(s.slip, {}))
+	]
+
+
+def _has_epf_contribution(totals: dict) -> bool:
+	return flt(totals.get(EPF_EMPLOYEE_COMPONENT)) > 0 or flt(totals.get(VPF_COMPONENT)) > 0
 
 
 def _aggregate_salary_detail(slip_names: list[str]) -> dict:
@@ -354,9 +383,20 @@ def get_ecr_file(filters: dict | str) -> dict:
 	if isinstance(filters, str):
 		filters = frappe.parse_json(filters)
 
-	rows = get_data(filters or {})
+	filters = filters or {}
+
+	if is_multi_company_enabled() and not filters.get("company"):
+		frappe.throw(
+			_(
+				"Select a Company before generating the ECR file. Each ECR file is filed "
+				"against a single EPF Establishment Code, and {0} is enabled in Payroll Settings."
+			).format(frappe.bold(_("Multi-Company Payroll"))),
+			title=_("Company Required"),
+		)
+
+	rows = get_data(filters)
 	if not rows:
-		return {"filename": _ecr_filename(filters or {}), "content": "", "row_count": 0}
+		return {"filename": _ecr_filename(filters), "content": "", "row_count": 0}
 
 	missing = [r["employee"] for r in rows if not r.get("uan_number")]
 	if missing:
@@ -383,7 +423,7 @@ def get_ecr_file(filters: dict | str) -> dict:
 		)
 
 	return {
-		"filename": _ecr_filename(filters or {}),
+		"filename": _ecr_filename(filters),
 		"content": "\n".join(lines),
 		"row_count": len(lines),
 	}

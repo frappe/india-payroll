@@ -199,6 +199,8 @@ doc_events = {
 	},
 	"Payroll Settings": {
 		"validate": [
+			"india_payroll.india_payroll.tds.settings.clear_token_cache_on_change",
+			"india_payroll.india_payroll.company_settings.validate_company_payroll_settings",
 			"india_payroll.india_payroll.tds.settings.validate_tds_filing_settings",
 			"india_payroll.india_payroll.tds.settings.clear_token_cache_on_change",
 		],

@@ -4,6 +4,7 @@
 import frappe
 from frappe.utils import flt, getdate
 
+from india_payroll.india_payroll.company_settings import is_statutory_enabled
 from india_payroll.india_payroll.utils import get_slip_ssa_values
 
 LWF_SALARY_COMPONENT = "Labour Welfare Fund"
@@ -47,7 +48,8 @@ def apply_lwf(doc, method=None) -> None:
 	  • The deduction month rule for that state's frequency
 	  • Whether the employee is manually exempted (lwf_exempted field)
 	"""
-	if not frappe.db.get_single_value("Payroll Settings", "enable_lwf"):
+	if not is_statutory_enabled("lwf", doc.company):
+		_remove_lwf_component(doc)
 		return
 
 	if not doc.salary_structure:
