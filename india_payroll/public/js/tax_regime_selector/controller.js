@@ -300,12 +300,16 @@ export class TaxRegimeSelector {
 		const payroll_period = this.payroll_period_control.get_value();
 		const entries = [];
 		Object.entries(this._sub_amounts || {}).forEach(([section, subs]) => {
+			const sub_max = Object.fromEntries(
+				(this._cat_map[section]?.sub_categories || []).map((s) => [s.name, s.max_amount])
+			);
 			Object.entries(subs).forEach(([sub_name, amount]) => {
 				if (amount > 0) {
 					entries.push({
 						exemption_category: section,
 						exemption_sub_category: sub_name,
 						amount,
+						max_amount: sub_max[sub_name] || this._cat_map[section]?.max_amount || 0,
 					});
 				}
 			});
@@ -328,6 +332,7 @@ export class TaxRegimeSelector {
 				row.exemption_category = e.exemption_category;
 				row.exemption_sub_category = e.exemption_sub_category;
 				row.amount = e.amount;
+				row.max_amount = e.max_amount;
 			});
 			frm.refresh_field("declarations");
 			delete frappe.route_hooks.after_load;

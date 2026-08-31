@@ -158,11 +158,38 @@ def get_custom_fields():
 				"insert_after": "create_overtime_slip",
 			},
 			{
-				"fieldname": "india_payroll_professional_tax_section",
-				"label": "Professional Tax",
+				"fieldname": "india_payroll_multi_company_section",
+				"label": "Multi-Company Payroll",
 				"fieldtype": "Section Break",
 				"insert_after": "india_payroll_tab",
 				"collapsible": 1,
+				"collapsible_depends_on": "eval:doc.enable_multi_company_payroll",
+			},
+			{
+				"fieldname": "enable_multi_company_payroll",
+				"label": "Enable Multi-Company Payroll",
+				"fieldtype": "Check",
+				"insert_after": "india_payroll_multi_company_section",
+				"description": (
+					"Maintain statutory registration details separately for each company. "
+					"When enabled, statutory deductions apply only to companies listed below."
+				),
+			},
+			{
+				"fieldname": "company_payroll_settings",
+				"label": "Company Payroll Settings",
+				"fieldtype": "Table",
+				"options": "India Payroll Company Setting",
+				"insert_after": "enable_multi_company_payroll",
+				"depends_on": "eval:doc.enable_multi_company_payroll",
+			},
+			{
+				"fieldname": "india_payroll_professional_tax_section",
+				"label": "Professional Tax",
+				"fieldtype": "Section Break",
+				"insert_after": "company_payroll_settings",
+				"collapsible": 1,
+				"collapsible_depends_on": "eval:doc.enable_professional_tax",
 			},
 			{
 				"fieldname": "enable_professional_tax",
@@ -176,6 +203,7 @@ def get_custom_fields():
 				"fieldtype": "Section Break",
 				"insert_after": "enable_professional_tax",
 				"collapsible": 1,
+				"collapsible_depends_on": "eval:doc.enable_esic",
 			},
 			{
 				"fieldname": "enable_esic",
@@ -188,7 +216,7 @@ def get_custom_fields():
 				"label": "ESIC Registration Number",
 				"fieldtype": "Data",
 				"insert_after": "enable_esic",
-				"depends_on": "eval:doc.enable_esic",
+				"depends_on": "eval:doc.enable_esic && !doc.enable_multi_company_payroll",
 				"translatable": 0,
 			},
 			{
@@ -197,6 +225,7 @@ def get_custom_fields():
 				"fieldtype": "Section Break",
 				"insert_after": "esic_registration_number",
 				"collapsible": 1,
+				"collapsible_depends_on": "eval:doc.enable_lwf",
 			},
 			{
 				"fieldname": "enable_lwf",
@@ -210,6 +239,7 @@ def get_custom_fields():
 				"fieldtype": "Section Break",
 				"insert_after": "enable_lwf",
 				"collapsible": 1,
+				"collapsible_depends_on": "eval:doc.enable_epf",
 			},
 			{
 				"fieldname": "enable_epf",
@@ -222,9 +252,153 @@ def get_custom_fields():
 				"label": "EPF Establishment Code",
 				"fieldtype": "Data",
 				"insert_after": "enable_epf",
-				"depends_on": "eval:doc.enable_epf",
+				"depends_on": "eval:doc.enable_epf && !doc.enable_multi_company_payroll",
 				"translatable": 0,
 				"description": "EPFO Establishment Code used in the ECR file header.",
+			},
+			{
+				"fieldname": "india_payroll_tds_section",
+				"label": "TDS Filing",
+				"fieldtype": "Section Break",
+				"insert_after": "epf_establishment_code",
+				"collapsible": 1,
+				"collapsible_depends_on": "eval:doc.enable_tds_filing",
+				"description": (
+					"File quarterly salary TDS returns (Form 24Q) through the Sandbox API "
+					"(sandbox.co.in). Sites on Frappe Cloud have credentials provisioned for them; "
+					"any other site enters its own below."
+				),
+			},
+			{
+				"fieldname": "enable_tds_filing",
+				"label": "Enable TDS Return Filing",
+				"fieldtype": "Check",
+				"insert_after": "india_payroll_tds_section",
+				"depends_on": "eval: india_payroll.can_enable_tds_filing(doc)",
+			},
+			{
+				"fieldname": "tds_sandbox_mode",
+				"label": "Use Sandbox Test Environment",
+				"fieldtype": "Check",
+				"default": "1",
+				"insert_after": "enable_tds_filing",
+				"depends_on": "eval: india_payroll.is_tds_filing_enabled(doc)",
+				"read_only_depends_on": "eval: india_payroll.tds_credentials_from_conf()",
+				"description": "When checked, uses Sandbox test credentials. Uncheck for live filings.",
+			},
+			{
+				"fieldname": "tds_credentials_managed_notice",
+				"fieldtype": "HTML",
+				"insert_after": "tds_sandbox_mode",
+				"depends_on": "eval: india_payroll.tds_credentials_from_conf()",
+				"options": (
+					'<div class="text-muted small">'
+					"Sandbox credentials for this site are provisioned by Frappe Cloud. "
+					"Nothing to configure here."
+					"</div>"
+				),
+			},
+			{
+				"fieldname": "tds_api_key",
+				"label": "Sandbox API Key",
+				"fieldtype": "Password",
+				"insert_after": "tds_credentials_managed_notice",
+				"depends_on": "eval: !india_payroll.tds_credentials_from_conf()",
+				"translatable": 0,
+			},
+			{
+				"fieldname": "tds_api_secret",
+				"label": "Sandbox API Secret",
+				"fieldtype": "Password",
+				"insert_after": "tds_api_key",
+				"depends_on": "eval: !india_payroll.tds_credentials_from_conf()",
+			},
+			{
+				"fieldname": "tds_api_version",
+				"label": "Sandbox API Version",
+				"fieldtype": "Data",
+				"default": "1.0.0",
+				"insert_after": "tds_api_secret",
+				"depends_on": "eval: !india_payroll.tds_credentials_from_conf()",
+				"translatable": 0,
+			},
+			{
+				"fieldname": "india_payroll_tds_cb",
+				"fieldtype": "Column Break",
+				"insert_after": "tds_api_version",
+			},
+			{
+				"fieldname": "tds_access_token",
+				"label": "Cached Access Token",
+				"fieldtype": "Password",
+				"insert_after": "india_payroll_tds_cb",
+				"hidden": 1,
+				"read_only": 1,
+				"description": "Cached Sandbox JWT. Managed automatically; do not edit.",
+			},
+			{
+				"fieldname": "tds_token_expiry",
+				"label": "Access Token Expiry",
+				"fieldtype": "Datetime",
+				"insert_after": "tds_access_token",
+				"hidden": 1,
+				"read_only": 1,
+			},
+		],
+		"Company": [
+			{
+				"fieldname": "india_payroll_tds_section",
+				"label": "TDS Deductor Details",
+				"fieldtype": "Section Break",
+				"insert_after": "tax_id",
+				"collapsible": 1,
+				"description": "Used when filing salary TDS returns (Form 24Q). The company PAN is the Tax ID above.",
+			},
+			{
+				"fieldname": "tan",
+				"label": "TAN",
+				"fieldtype": "Data",
+				"insert_after": "india_payroll_tds_section",
+				"translatable": 0,
+				"description": "10-character Tax Deduction & Collection Account Number (e.g. ABCD12345E).",
+			},
+			{
+				"fieldname": "deductor_type",
+				"label": "Deductor Type",
+				"fieldtype": "Select",
+				"options": (
+					"\nCompany\nBranch / Division of Company\nCentral Government"
+					"\nState Government\nStatutory body\nAutonomous body\nLocal Authority\nFirm\nIndividual / HUF\nAOP / BOI"
+				),
+				"insert_after": "tan",
+				"translatable": 0,
+			},
+			{
+				"fieldname": "india_payroll_deductor_cb",
+				"fieldtype": "Column Break",
+				"insert_after": "deductor_type",
+			},
+			{
+				"fieldname": "responsible_person_name",
+				"label": "Responsible Person Name",
+				"fieldtype": "Data",
+				"insert_after": "india_payroll_deductor_cb",
+				"translatable": 0,
+				"description": "Name of the person responsible for TDS deduction (as per income tax records).",
+			},
+			{
+				"fieldname": "responsible_person_pan",
+				"label": "Responsible Person PAN",
+				"fieldtype": "Data",
+				"insert_after": "responsible_person_name",
+				"translatable": 0,
+			},
+			{
+				"fieldname": "responsible_person_designation",
+				"label": "Responsible Person Designation",
+				"fieldtype": "Data",
+				"insert_after": "responsible_person_pan",
+				"translatable": 0,
 			},
 		],
 		"Employee": [

@@ -1,6 +1,8 @@
 [pre_model_sync]
 # Patches added in this section will be executed before doctypes are migrated
 # Read docs to understand patches: https://docs.frappe.io/framework/user/en/database-migrations
+india_payroll.patches.v1_0.create_payroll_manager_role
+india_payroll.patches.v1_0.convert_tds_api_key_to_password
 
 [post_model_sync]
 # Patches added in this section will be executed after doctypes are migrated
@@ -9,3 +11,4 @@ india_payroll.patches.v1_0.remove_include_in_pf_wage_field
 india_payroll.patches.v1_0.remove_tax_regime_selector_from_tax_benefits
 india_payroll.patches.v1_0.move_statutory_config_to_salary_structure_assignment
 india_payroll.patches.v1_0.consolidate_employee_india_payroll_section #2
+india_payroll.patches.v1_0.set_tds_sandbox_mode_from_conf

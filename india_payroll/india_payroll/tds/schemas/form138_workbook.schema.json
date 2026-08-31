@@ -1,0 +1,337 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"type": "object",
+	"properties": {
+		"name": {
+			"type": "string",
+			"enum": ["form138_workbook"]
+		},
+		"@entity": {
+			"type": "string",
+			"enum": ["workbook"]
+		},
+		"sheets": {
+			"type": "array",
+			"items": {
+				"oneOf": [
+					{
+						"type": "object",
+						"properties": {
+							"name": {
+								"type": "string",
+								"enum": ["payer_sheet"]
+							},
+							"@entity": {
+								"type": "string",
+								"enum": ["sheet"]
+							},
+							"blocks": {
+								"type": "array",
+								"items": {
+									"oneOf": [
+										{
+											"type": "object",
+											"properties": {
+												"name": {
+													"type": "string",
+													"enum": ["payer_list"]
+												},
+												"@entity": {
+													"type": "string",
+													"enum": ["list"]
+												},
+												"items": {
+													"type": "array",
+													"items": {
+														"type": "object",
+														"properties": {
+															"name": { "type": "string" },
+															"tan": { "type": "string" },
+															"pan": { "type": "string" },
+															"country": { "type": "string" },
+															"flat_door_block_number": { "type": "string" },
+															"post_office": { "type": ["string", "null"] },
+															"road_street_block_sector": { "type": ["string", "null"] },
+															"area_locality": { "type": ["string", "null"] },
+															"district": { "type": ["string", "null"] },
+															"state": { "type": "string" },
+															"postal_code": { "type": "string" },
+															"email": { "type": "string" },
+															"contact_country_code": { "type": "string" },
+															"contact_number": { "type": "string" },
+															"deductor_type": { "type": "string" },
+															"government_state_code": { "type": ["string", "null"] },
+															"ministry_code": { "type": ["string", "null"] },
+															"ministry_name_other": { "type": ["string", "null"] },
+															"account_office_identification_number": { "type": ["string", "null"] },
+															"gstin": { "type": ["string", "null"] }
+														},
+														"additionalProperties": false
+													}
+												}
+											},
+											"required": ["name", "@entity", "items"]
+										},
+										{
+											"type": "object",
+											"properties": {
+												"name": {
+													"type": "string",
+													"enum": ["responsible_person_list"]
+												},
+												"@entity": {
+													"type": "string",
+													"enum": ["list"]
+												},
+												"items": {
+													"type": "array",
+													"items": {
+														"type": "object",
+														"properties": {
+															"name": { "type": "string" },
+															"designation": { "type": "string" },
+															"pan": { "type": "string" },
+															"flat_door_block_number": { "type": "string" },
+															"post_office": { "type": ["string", "null"] },
+															"road_street_block_sector": { "type": ["string", "null"] },
+															"area_locality": { "type": ["string", "null"] },
+															"district": { "type": ["string", "null"] },
+															"state": { "type": "string" },
+															"postal_code": { "type": "string" },
+															"email": { "type": "string" },
+															"country": { "type": "string" },
+															"contact_country_code": { "type": "string" },
+															"contact_number": { "type": "string" }
+														},
+														"additionalProperties": false
+													}
+												}
+											},
+											"required": ["name", "@entity", "items"]
+										}
+									]
+								}
+							}
+						},
+						"required": ["name", "@entity", "blocks"]
+					},
+					{
+						"type": "object",
+						"properties": {
+							"name": {
+								"type": "string",
+								"enum": ["payee_sheet"]
+							},
+							"@entity": {
+								"type": "string",
+								"enum": ["sheet"]
+							},
+							"blocks": {
+								"type": "array",
+								"items": {
+									"oneOf": [
+										{
+											"type": "object",
+											"properties": {
+												"name": {
+													"type": "string",
+													"enum": ["payee_table"]
+												},
+												"@entity": {
+													"type": "string",
+													"enum": ["table"]
+												},
+												"header": {
+													"type": "array",
+													"items": [
+														{ "type": "string", "enum": ["sr_no"] },
+														{ "type": "string", "enum": ["pan"] },
+														{ "type": "string", "enum": ["name"] }
+													],
+													"additionalItems": false,
+													"minItems": 3,
+													"maxItems": 3
+												},
+												"rows": {
+													"type": "array",
+													"items": {
+														"type": "array",
+														"items": [
+															{ "type": "integer" },
+															{ "type": "string" },
+															{ "type": "string" }
+														],
+														"additionalItems": false,
+														"minItems": 3,
+														"maxItems": 3
+													}
+												}
+											},
+											"required": ["name", "@entity", "header", "rows"]
+										}
+									]
+								}
+							}
+						},
+						"required": ["name", "@entity", "blocks"]
+					},
+					{
+						"type": "object",
+						"properties": {
+							"name": {
+								"type": "string",
+								"enum": ["challan_sheet"]
+							},
+							"@entity": {
+								"type": "string",
+								"enum": ["sheet"]
+							},
+							"blocks": {
+								"type": "array",
+								"items": {
+									"oneOf": [
+										{
+											"type": "object",
+											"properties": {
+												"name": {
+													"type": "string",
+													"enum": ["challan_table"]
+												},
+												"@entity": {
+													"type": "string",
+													"enum": ["table"]
+												},
+												"header": {
+													"type": "array",
+													"items": [
+														{ "type": "string", "enum": ["bank_challan_number_or_ddo_serial_number"] },
+														{ "type": "string", "enum": ["bsr_code_or_form_24g_receipt_number"] },
+														{ "type": "string", "enum": ["bank_challan_or_transfer_voucher_date_epoch"] },
+														{ "type": "string", "enum": ["minor_head"] },
+														{ "type": "string", "enum": ["mode_of_payment"] },
+														{ "type": "string", "enum": ["nil_challan_indicator"] },
+														{ "type": "string", "enum": ["total_tax_deducted"] },
+														{ "type": "string", "enum": ["total_interest"] },
+														{ "type": "string", "enum": ["total_fee"] },
+														{ "type": "string", "enum": ["total_penalty"] },
+														{ "type": "string", "enum": ["total_tax_deposited"] }
+													],
+													"additionalItems": false,
+													"minItems": 11,
+													"maxItems": 11
+												},
+												"rows": {
+													"type": "array",
+													"items": {
+														"type": "array",
+														"items": [
+															{ "type": ["string", "null"] },
+															{ "type": ["string", "null"] },
+															{ "type": "integer" },
+															{ "type": "string" },
+															{ "type": ["string", "null"] },
+															{ "type": "string" },
+															{ "type": "integer" },
+															{ "type": "integer" },
+															{ "type": "integer" },
+															{ "type": "integer" },
+															{ "type": "integer" }
+														],
+														"additionalItems": false,
+														"minItems": 11,
+														"maxItems": 11
+													}
+												}
+											},
+											"required": ["name", "@entity", "header", "rows"]
+										}
+									]
+								}
+							}
+						},
+						"required": ["name", "@entity", "blocks"]
+					},
+					{
+						"type": "object",
+						"properties": {
+							"name": {
+								"type": "string",
+								"enum": ["payment_sheet"]
+							},
+							"@entity": {
+								"type": "string",
+								"enum": ["sheet"]
+							},
+							"blocks": {
+								"type": "array",
+								"items": {
+									"oneOf": [
+										{
+											"type": "object",
+											"properties": {
+												"name": {
+													"type": "string",
+													"enum": ["payment_table"]
+												},
+												"@entity": {
+													"type": "string",
+													"enum": ["table"]
+												},
+												"header": {
+													"type": "array",
+													"items": [
+														{ "type": "string", "enum": ["payee_sr_no"] },
+														{ "type": "string", "enum": ["bank_challan_number_or_ddo_serial_number"] },
+														{ "type": "string", "enum": ["bsr_code_or_form_24g_receipt_number"] },
+														{ "type": "string", "enum": ["nature_of_payment"] },
+														{ "type": "string", "enum": ["payment_amount"] },
+														{ "type": "string", "enum": ["payment_date_epoch"] },
+														{ "type": "string", "enum": ["total_tax_deducted"] },
+														{ "type": "string", "enum": ["deduction_date_epoch"] },
+														{ "type": "string", "enum": ["total_tax_deposited"] },
+														{ "type": "string", "enum": ["deposit_date_epoch"] },
+														{ "type": "string", "enum": ["reason_for_lower_deduction"] },
+														{ "type": "string", "enum": ["certificate_number"] }
+													],
+													"additionalItems": false,
+													"minItems": 12,
+													"maxItems": 12
+												},
+												"rows": {
+													"type": "array",
+													"items": {
+														"type": "array",
+														"items": [
+															{ "type": "integer" },
+															{ "type": ["string", "null"] },
+															{ "type": ["string", "null"] },
+															{ "type": "string" },
+															{ "type": "number" },
+															{ "type": "integer" },
+															{ "type": "number" },
+															{ "type": ["integer", "null"] },
+															{ "type": "number" },
+															{ "type": ["integer", "null"] },
+															{ "type": ["string", "null"] },
+															{ "type": ["string", "null"] }
+														],
+														"additionalItems": false,
+														"minItems": 12,
+														"maxItems": 12
+													}
+												}
+											},
+											"required": ["name", "@entity", "header", "rows"]
+										}
+									]
+								}
+							}
+						},
+						"required": ["name", "@entity", "blocks"]
+					}
+				]
+			}
+		}
+	},
+	"required": ["name", "@entity", "sheets"]
+}

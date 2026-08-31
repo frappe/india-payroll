@@ -1,6 +1,7 @@
 import frappe
 from frappe.utils import flt
 
+from india_payroll.india_payroll.company_settings import is_statutory_enabled
 from india_payroll.india_payroll.utils import get_slip_ssa_values
 
 ESI_EMPLOYEE_COMPONENT = "Employee State Insurance"
@@ -25,7 +26,8 @@ def apply_esi(doc, method=None) -> None:
 	so a high earner is not wrongly pulled into ESI in an LOP month. The
 	contribution itself is still levied on the actual wages paid (``gross_pay``).
 	"""
-	if not frappe.db.get_single_value("Payroll Settings", "enable_esic"):
+	if not is_statutory_enabled("esic", doc.company):
+		_remove_esi_components(doc)
 		return
 
 	if not doc.salary_structure:

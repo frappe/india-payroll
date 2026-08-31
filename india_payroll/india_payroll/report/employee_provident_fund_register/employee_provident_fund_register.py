@@ -8,6 +8,10 @@ from frappe import _
 from frappe.query_builder import DocType
 from frappe.utils import flt
 
+from india_payroll.india_payroll.company_settings import (
+	get_applicable_companies,
+	is_multi_company_enabled,
+)
 from india_payroll.india_payroll.epf import (
 	EPF_EMPLOYEE_COMPONENT,
 	EPF_EMPLOYER_RATE,
@@ -15,6 +19,7 @@ from india_payroll.india_payroll.epf import (
 	EPS_RATE,
 	VPF_COMPONENT,
 	_epfo_round,
+	is_pf_wage_component,
 )
 from india_payroll.india_payroll.utils import get_effective_ssa_values
 
@@ -144,6 +149,8 @@ def get_columns():
 def get_data(filters):
 	date_range = _get_date_range(filters)
 
+	applicable_companies = get_applicable_companies("epf")
+
 	SS = DocType("Salary Slip")
 	Emp = DocType("Employee")
 
@@ -201,7 +208,8 @@ def get_data(filters):
 	if not slips:
 		return []
 
-	totals_by_slip = _aggregate_salary_detail({s.slip: s.company for s in slips})
+	totals_by_slip = _aggregate_salary_detail([s.slip for s in slips])
+	slips = _filter_in_scope(slips, totals_by_slip, applicable_companies)
 
 	data = []
 	for s in slips:
@@ -252,30 +260,46 @@ def get_data(filters):
 	return data
 
 
-def _aggregate_salary_detail(company_by_slip: dict) -> dict:
+def _filter_in_scope(slips, totals_by_slip, applicable_companies):
+	"""Drop slips whose company is outside EPF scope, keeping those that already
+	recorded an employee EPF or VPF contribution.
+
+	A company removed from Company Payroll Settings stops accruing new EPF, but
+	the contributions it already deducted have been remitted against its
+	establishment code, so past months must stay reportable and re-exportable.
+	"""
+	if applicable_companies is None:
+		return slips
+
+	return [
+		s
+		for s in slips
+		if s.company in applicable_companies or _has_epf_contribution(totals_by_slip.get(s.slip, {}))
+	]
+
+
+def _has_epf_contribution(totals: dict) -> bool:
+	return flt(totals.get(EPF_EMPLOYEE_COMPONENT)) > 0 or flt(totals.get(VPF_COMPONENT)) > 0
+
+
+def _aggregate_salary_detail(slip_names: list[str]) -> dict:
 	"""One Salary Detail sweep across all slips in the report.
 
 	PF wage is the sum of PF-eligible earnings, mirroring ``epf._compute_pf_wage``:
-	HRA (identified from each slip's Company master ``hra_component``) and any
-	earning sourced from an Additional Salary (bonuses/incentives) are excluded.
+	only Basic and Dearness Allowance earnings count (matched by
+	``epf.is_pf_wage_component``), and anything sourced from an Additional
+	Salary (arrears/incentives) is excluded.
 
 	Returns: { slip_name: { "pf_wage": ..., "Provident Fund": ..., "Voluntary Provident Fund": ... } }
 	"""
-	if not company_by_slip:
+	if not slip_names:
 		return {}
-
-	# Cache hra_component per company so multi-company reports do one lookup each.
-	hra_by_company: dict[str, str | None] = {}
-	for company in set(company_by_slip.values()):
-		hra_by_company[company] = (
-			frappe.db.get_value("Company", company, "hra_component") if company else None
-		)
 
 	rows = frappe.get_all(
 		"Salary Detail",
 		filters={
 			"parenttype": "Salary Slip",
-			"parent": ("in", list(company_by_slip)),
+			"parent": ("in", slip_names),
 		},
 		fields=["parent", "parentfield", "salary_component", "amount", "additional_salary"],
 	)
@@ -284,11 +308,10 @@ def _aggregate_salary_detail(company_by_slip: dict) -> dict:
 	for r in rows:
 		bucket = totals.setdefault(r.parent, {})
 		if r.parentfield == "earnings":
-			hra_component = hra_by_company.get(company_by_slip.get(r.parent))
-			# Exclude HRA and Additional-Salary earnings from PF wage.
-			if hra_component and r.salary_component == hra_component:
-				continue
+			# Count only Basic / Dearness Allowance, and never Additional Salary.
 			if r.additional_salary:
+				continue
+			if not is_pf_wage_component(r.salary_component):
 				continue
 			bucket["pf_wage"] = flt(bucket.get("pf_wage")) + flt(r.amount)
 		elif r.parentfield == "deductions" and r.salary_component in (
@@ -360,9 +383,20 @@ def get_ecr_file(filters: dict | str) -> dict:
 	if isinstance(filters, str):
 		filters = frappe.parse_json(filters)
 
-	rows = get_data(filters or {})
+	filters = filters or {}
+
+	if is_multi_company_enabled() and not filters.get("company"):
+		frappe.throw(
+			_(
+				"Select a Company before generating the ECR file. Each ECR file is filed "
+				"against a single EPF Establishment Code, and {0} is enabled in Payroll Settings."
+			).format(frappe.bold(_("Multi-Company Payroll"))),
+			title=_("Company Required"),
+		)
+
+	rows = get_data(filters)
 	if not rows:
-		return {"filename": _ecr_filename(filters or {}), "content": "", "row_count": 0}
+		return {"filename": _ecr_filename(filters), "content": "", "row_count": 0}
 
 	missing = [r["employee"] for r in rows if not r.get("uan_number")]
 	if missing:
@@ -389,7 +423,7 @@ def get_ecr_file(filters: dict | str) -> dict:
 		)
 
 	return {
-		"filename": _ecr_filename(filters or {}),
+		"filename": _ecr_filename(filters),
 		"content": "\n".join(lines),
 		"row_count": len(lines),
 	}
