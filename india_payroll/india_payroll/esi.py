@@ -117,12 +117,12 @@ def _update_esi_in_salary_slip(doc, split) -> None:
 		doc.append("deductions", {"salary_component": ESI_EMPLOYEE_COMPONENT, "amount": split.employee})
 
 
-def get_employer_contributions(earnings, config, *, paid_field="amount") -> dict:
+def get_employer_contributions(earnings, config, *, paid_field="amount", company=None) -> dict:
 	"""Employer ESI, keyed by component.
 
 	Returns zero rather than omitting it, so a stale row gets cleared.
 	"""
-	if not frappe.db.get_single_value("Payroll Settings", "enable_esic"):
+	if not is_statutory_enabled("esic", company):
 		return {ESI_EMPLOYER_COMPONENT: 0.0}
 
 	split = get_esi_split(
