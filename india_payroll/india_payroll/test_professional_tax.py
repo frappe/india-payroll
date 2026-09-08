@@ -10,12 +10,22 @@ from hrms.payroll.doctype.salary_structure.test_salary_structure import (
 )
 from hrms.tests.utils import HRMSTestSuite
 
+from india_payroll.india_payroll.professional_tax import STATE_PT_CONFIG, _compute_pt_monthly
 from india_payroll.install import create_professional_tax_component
 
 
 class TestProfessionalTax(HRMSTestSuite):
 	def setUp(self):
 		create_professional_tax_component()
+
+	def test_maharashtra_women_professional_tax_exemption(self):
+		for month in (1, 2):
+			for gross_pay, expected in ((20000, 0), (25000, 0), (25000.01, 300 if month == 2 else 200)):
+				with self.subTest(month=month, gross_pay=gross_pay):
+					self.assertEqual(
+						_compute_pt_monthly(gross_pay, STATE_PT_CONFIG["Maharashtra"], month, "Female"),
+						expected,
+					)
 
 	@HRMSTestSuite.change_settings("Payroll Settings", {"enable_professional_tax": 1})
 	def test_maharashtra_professional_tax_applied_on_salary_slip(self):
@@ -61,9 +71,9 @@ class TestProfessionalTax(HRMSTestSuite):
 	@HRMSTestSuite.change_settings("Payroll Settings", {"enable_professional_tax": 1})
 	def test_maharashtra_february_amount_for_female_employee(self):
 		"""
-		A female employee in Maharashtra with gross pay > ₹10,000 should have
+		A female employee in Maharashtra with gross pay > ₹25,000 should have
 		₹300 Professional Tax deducted in February (women exemption does not apply
-		above ₹10,000; February special amount applies instead of the usual ₹200).
+		above ₹25,000; February special amount applies instead of the usual ₹200).
 		"""
 		employee = make_employee(
 			"test_maharashtra_pt_female_feb@indiapayroll.com",
