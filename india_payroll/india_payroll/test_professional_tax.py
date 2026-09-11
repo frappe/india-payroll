@@ -19,8 +19,8 @@ class TestProfessionalTax(HRMSTestSuite):
 		create_professional_tax_component()
 
 	def test_maharashtra_women_professional_tax_exemption(self):
-		for month in (1, 2):
-			for gross_pay, expected in ((20000, 0), (25000, 0), (25000.01, 300 if month == 2 else 200)):
+		for month, taxable_amount in ((1, 200), (2, 300)):
+			for gross_pay, expected in ((20000, 0), (25000, 0), (25000.01, taxable_amount)):
 				with self.subTest(month=month, gross_pay=gross_pay):
 					self.assertEqual(
 						_compute_pt_monthly(gross_pay, STATE_PT_CONFIG["Maharashtra"], month, "Female"),
