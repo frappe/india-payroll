@@ -14,3 +14,4 @@ india_payroll.patches.v1_0.consolidate_employee_india_payroll_section #2
 india_payroll.patches.v1_0.set_tds_sandbox_mode_from_conf
 india_payroll.patches.v1_0.fix_tds_depends_on_expressions
 india_payroll.patches.v1_0.add_employer_esi_component
+india_payroll.patches.v1_0.update_eps_component_description
