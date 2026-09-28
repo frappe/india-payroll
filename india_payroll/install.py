@@ -568,7 +568,8 @@ def get_custom_fields():
 				"allow_on_submit": 1,
 				"description": (
 					"If checked, employee + employer EPF contributions are computed on the "
-					"actual PF wage when it exceeds ₹15,000. EPS and EDLI remain capped by law."
+					"actual PF wage when it exceeds the statutory ceiling (₹25,000 from 17 Sept 2026, "
+					"₹15,000 before). EPS and EDLI remain capped by law."
 				),
 			},
 			{
@@ -752,7 +753,8 @@ def create_epf_components():
 			"type": "Employer Contribution",
 			"description": (
 				"Employer's EPS share (A/c 10) = 8.33% of capped PF wages. "
-				"Zero for employees who first joined EPF on/after 1 Sept 2014 with PF wage > ₹15,000."
+				"Zero for employees who first joined EPF on/after 1 Sept 2014 with PF wage above the "
+				"statutory ceiling (₹25,000 from 17 Sept 2026, ₹15,000 before)."
 			),
 		},
 		{
