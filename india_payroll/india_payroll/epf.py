@@ -188,18 +188,6 @@ def _compute_pf_wage(doc) -> float:
 	return sum(flt(e.amount) for e in doc.earnings if _is_pf_wage_row(e))
 
 
-def _lop_factor(doc) -> float:
-	"""Proration factor for LOP: paid days over total working days.
-
-	Falls back to 1.0 (no proration) when total working days is unavailable, so
-	the contribution is never divided by zero for a preview or a manual slip.
-	"""
-	total_days = flt(doc.total_working_days)
-	if total_days <= 0:
-		return 1.0
-	return flt(doc.payment_days) / total_days
-
-
 def _compute_vpf(doc, epf_base: float, *, vpf_mode=None, vpf_percentage=None, vpf_amount=None) -> float:
 	"""
 	Voluntary Provident Fund — additional employee contribution above 12 %.
