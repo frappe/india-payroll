@@ -17,8 +17,10 @@ from hrms.tests.utils import HRMSTestSuite
 
 from india_payroll.india_payroll.epf import (
 	EPF_EMPLOYEE_COMPONENT,
+	EPF_PREVIOUS_WAGE_CEILING,
 	EPF_WAGE_CEILING,
 	VPF_COMPONENT,
+	get_epf_wage_ceiling,
 )
 from india_payroll.install import create_epf_components
 
@@ -67,6 +69,9 @@ _TEST_EMAILS = [
 	"test_epf_preview@indiapayroll.com",
 	"test_epf_lop_prorated@indiapayroll.com",
 	"test_epf_lop_register_match@indiapayroll.com",
+	"test_epf_revised_at_ceiling@indiapayroll.com",
+	"test_epf_revised_above_ceiling@indiapayroll.com",
+	"test_epf_split_month@indiapayroll.com",
 ]
 
 
@@ -209,7 +214,7 @@ class TestEPF(HRMSTestSuite):
 	)
 	def test_at_ceiling_standard_12_percent(self):
 		"""PF wage ₹15,000 (= ceiling) should deduct ₹1,800 (12%)."""
-		gross = float(EPF_WAGE_CEILING)
+		gross = float(EPF_PREVIOUS_WAGE_CEILING)
 		_, slip = self._make_salary_slip(
 			"test_epf_below_ceiling@indiapayroll.com",
 			"Test EPF At Ceiling Structure",
@@ -223,7 +228,7 @@ class TestEPF(HRMSTestSuite):
 		"Payroll Settings",
 		{"enable_epf": 1, "enable_professional_tax": 0, "enable_esic": 0, "enable_lwf": 0},
 	)
-	def test_above_ceiling_default_caps_at_15000(self):
+	def test_pre_revision_ceiling_caps_at_15000(self):
 		"""
 		PF wage ₹25,000 with `contribute_on_actual_pf_wage` unset (default).
 		Employee EPF capped at ₹15,000 → ₹1,800.
@@ -268,7 +273,7 @@ class TestEPF(HRMSTestSuite):
 		Employee EPF: 12% * 15,000 = ₹1,800
 		VPF:          5% * 15,000 = ₹750
 		"""
-		gross = float(EPF_WAGE_CEILING)
+		gross = float(EPF_PREVIOUS_WAGE_CEILING)
 		employee, slip = self._make_salary_slip(
 			"test_epf_vpf@indiapayroll.com",
 			"Test EPF VPF Structure",
@@ -295,7 +300,7 @@ class TestEPF(HRMSTestSuite):
 		vpf_mode = Amount, vpf_amount = ₹2,000: fixed lumpsum deduction
 		regardless of PF wage. vpf_percentage is ignored.
 		"""
-		gross = float(EPF_WAGE_CEILING)
+		gross = float(EPF_PREVIOUS_WAGE_CEILING)
 		employee, slip = self._make_salary_slip(
 			"test_epf_vpf_amount@indiapayroll.com",
 			"Test EPF VPF Amount Structure",
@@ -306,6 +311,73 @@ class TestEPF(HRMSTestSuite):
 
 		self.assertEqual(self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT), 1_800)
 		self.assertEqual(self._amount(slip, "deductions", VPF_COMPONENT), 2_000)
+
+	def test_wage_ceiling_follows_pay_period(self):
+		"""₹15,000 up to 16 Sept 2026, ₹25,000 from 17 Sept, day-weighted across it."""
+		self.assertEqual(get_epf_wage_ceiling("2026-08-01", "2026-08-31"), 15_000)
+		self.assertEqual(get_epf_wage_ceiling("2026-09-01", "2026-09-16"), 15_000)
+		self.assertEqual(get_epf_wage_ceiling("2026-09-17", "2026-09-30"), 25_000)
+		self.assertEqual(get_epf_wage_ceiling("2026-10-01", "2026-10-31"), 25_000)
+		self.assertEqual(get_epf_wage_ceiling("2026-10-01"), 25_000)
+
+		# September 2026: 16 days at 15,000 and 14 days at 25,000.
+		self.assertEqual(get_epf_wage_ceiling("2026-09-01", "2026-09-30"), 19_666.67)
+		# Weekly period 14-20 Sept: 3 days old, 4 days revised.
+		self.assertEqual(get_epf_wage_ceiling("2026-09-14", "2026-09-20"), 20_714.29)
+
+	@HRMSTestSuite.change_settings(
+		"Payroll Settings",
+		{"enable_epf": 1, "enable_professional_tax": 0, "enable_esic": 0, "enable_lwf": 0},
+	)
+	def test_revised_ceiling_at_ceiling(self):
+		"""October 2026, PF wage ₹25,000 (= revised ceiling) → ₹3,000."""
+		_, slip = self._make_salary_slip(
+			"test_epf_revised_at_ceiling@indiapayroll.com",
+			"Test EPF Revised At Ceiling Structure",
+			float(EPF_WAGE_CEILING),
+			posting_date="2026-10-01",
+			start_date="2026-10-01",
+			end_date="2026-10-31",
+		)
+		slip.insert()
+
+		self.assertEqual(self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT), 3_000)
+
+	@HRMSTestSuite.change_settings(
+		"Payroll Settings",
+		{"enable_epf": 1, "enable_professional_tax": 0, "enable_esic": 0, "enable_lwf": 0},
+	)
+	def test_revised_ceiling_caps_above_25000(self):
+		"""October 2026, PF wage ₹40,000 without actual-wage opt-in → capped at ₹3,000."""
+		_, slip = self._make_salary_slip(
+			"test_epf_revised_above_ceiling@indiapayroll.com",
+			"Test EPF Revised Above Ceiling Structure",
+			40_000.0,
+			posting_date="2026-10-01",
+			start_date="2026-10-01",
+			end_date="2026-10-31",
+		)
+		slip.insert()
+
+		self.assertEqual(self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT), 3_000)
+
+	@HRMSTestSuite.change_settings(
+		"Payroll Settings",
+		{"enable_epf": 1, "enable_professional_tax": 0, "enable_esic": 0, "enable_lwf": 0},
+	)
+	def test_split_month_ceiling_september_2026(self):
+		"""September 2026 straddles the revision: 12% of ₹19,666.67 → ₹2,360."""
+		_, slip = self._make_salary_slip(
+			"test_epf_split_month@indiapayroll.com",
+			"Test EPF Split Month Structure",
+			25_000.0,
+			posting_date="2026-09-01",
+			start_date="2026-09-01",
+			end_date="2026-09-30",
+		)
+		slip.insert()
+
+		self.assertEqual(self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT), 2_360)
 
 	def test_vpf_amount_mode_prorates_on_lop(self):
 		"""
@@ -388,13 +460,13 @@ class TestEPF(HRMSTestSuite):
 		earning = slip.earnings[0]
 		paid_wage = flt(earning.amount)
 		self.assertLess(paid_wage, flt(earning.default_amount), "LOP did not reduce the paid wage")
-		self.assertLess(paid_wage, EPF_WAGE_CEILING, "paid wage must fall below the ceiling")
+		self.assertLess(paid_wage, EPF_PREVIOUS_WAGE_CEILING, "paid wage must fall below the ceiling")
 
 		rows = execute(frappe._dict({"company": "_Test Company", "from_year": 2026, "month": "June"}))[1]
 		row = next(r for r in rows if r["employee"] == employee)
 
 		slip_epf = self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT)
-		self.assertEqual(row["epf_wages"], min(paid_wage, EPF_WAGE_CEILING))
+		self.assertEqual(row["epf_wages"], min(paid_wage, EPF_PREVIOUS_WAGE_CEILING))
 		self.assertEqual(slip_epf, row["employee_epf"])
 		self.assertEqual(slip_epf, _epfo_round(flt(row["epf_wages"]) * EPF_EMPLOYEE_RATE))
 
@@ -556,7 +628,7 @@ class TestEPF(HRMSTestSuite):
 		called inside ``calculate_net_pay``, so driving the preview path alone (no
 		insert/save) must still produce the EPF deduction row.
 		"""
-		gross = float(EPF_WAGE_CEILING)
+		gross = float(EPF_PREVIOUS_WAGE_CEILING)
 		_, slip = self._make_salary_slip(
 			"test_epf_preview@indiapayroll.com",
 			"Test EPF Preview Structure",
@@ -579,7 +651,7 @@ class TestEPF(HRMSTestSuite):
 		are now off-slip (Salary Structure / CTC), so they cannot shift net
 		pay or gross even structurally.
 		"""
-		gross = float(EPF_WAGE_CEILING)
+		gross = float(EPF_PREVIOUS_WAGE_CEILING)
 		employee, slip = self._make_salary_slip(
 			"test_epf_net_pay@indiapayroll.com",
 			"Test EPF Net Pay Structure",

@@ -1,10 +1,11 @@
 # Copyright (c) 2026, Frappe Technologies Pvt. Ltd. and contributors
 # License: GNU General Public License v3. See license.txt
 
+import datetime
 import re
 
 import frappe
-from frappe.utils import flt
+from frappe.utils import date_diff, flt, getdate
 
 from india_payroll.india_payroll.company_settings import is_statutory_enabled
 from india_payroll.india_payroll.utils import get_slip_ssa_values
@@ -22,7 +23,9 @@ EPF_EMPLOYEE_COMPONENTS = (EPF_EMPLOYEE_COMPONENT, VPF_COMPONENT)
 # Employer-side rates remain here even though the slip hook no longer applies
 # them — the EPF register / ECR report reads them when reconstructing the
 # canonical employer split per EPFO statute.
-EPF_WAGE_CEILING = 15_000  # PF / EPS / EDLI statutory ceiling
+EPF_WAGE_CEILING = 25_000  # PF / EPS / EDLI statutory ceiling (S.O. 5109(E))
+EPF_WAGE_CEILING_REVISED_ON = datetime.date(2026, 9, 17)
+EPF_PREVIOUS_WAGE_CEILING = 15_000  # in force until 16 Sept 2026
 EPF_EMPLOYEE_RATE = 0.12  # employee EPF share
 EPF_EMPLOYER_RATE = 0.12  # employer total share (split between EPF + EPS)
 EPS_RATE = 0.0833  # employer's pension diversion
@@ -115,7 +118,7 @@ def apply_epf(doc, method=None) -> None:
 		return
 
 	contribute_on_actual = bool(ssa.get("contribute_on_actual_pf_wage"))
-	pf_wage_capped = min(pf_wage, EPF_WAGE_CEILING)
+	pf_wage_capped = min(pf_wage, get_epf_wage_ceiling(doc.start_date, doc.end_date))
 	epf_base = pf_wage if contribute_on_actual else pf_wage_capped
 
 	employee_epf = _epfo_round(epf_base * EPF_EMPLOYEE_RATE)
@@ -128,6 +131,31 @@ def apply_epf(doc, method=None) -> None:
 	)
 
 	_apply_epf_components(doc, employee_epf=employee_epf, vpf=vpf)
+
+
+def get_epf_wage_ceiling(start_date, end_date=None) -> float:
+	"""Monthly PF wage ceiling for a pay period.
+
+	S.O. 5109(E) raised the ceiling from ₹15,000 to ₹25,000 with effect from
+	17 Sept 2026. A period that straddles that date gets a ceiling weighted by
+	calendar days on each side, so September 2026 is capped at
+	15,000 * 16/30 + 25,000 * 14/30 = ₹19,666.67.
+	"""
+	start = getdate(start_date)
+	end = getdate(end_date) if end_date else start
+
+	if start >= EPF_WAGE_CEILING_REVISED_ON:
+		return EPF_WAGE_CEILING
+	if end < EPF_WAGE_CEILING_REVISED_ON:
+		return EPF_PREVIOUS_WAGE_CEILING
+
+	total_days = date_diff(end, start) + 1
+	revised_days = date_diff(end, EPF_WAGE_CEILING_REVISED_ON) + 1
+	return flt(
+		(EPF_PREVIOUS_WAGE_CEILING * (total_days - revised_days) + EPF_WAGE_CEILING * revised_days)
+		/ total_days,
+		2,
+	)
 
 
 # ---------------------------------------------------------------------------
@@ -158,13 +186,6 @@ def _compute_pf_wage(doc) -> float:
 	# this is the LOP-prorated wage actually paid, which is what the EPF
 	# register and the ECR report as EPF wages.
 	return sum(flt(e.amount) for e in doc.earnings if _is_pf_wage_row(e))
-
-
-def _compute_monthly_epf_base(monthly_pf_wage: float, *, contribute_on_actual: bool) -> float:
-	annual_pf_wage = flt(monthly_pf_wage) * 12
-	annual_ceiling = EPF_WAGE_CEILING * 12
-	annual_base = annual_pf_wage if contribute_on_actual else min(annual_pf_wage, annual_ceiling)
-	return annual_base / 12
 
 
 def _lop_factor(doc) -> float:

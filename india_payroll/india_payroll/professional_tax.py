@@ -86,7 +86,7 @@ STATE_PT_CONFIG = {
 		"frequency": "monthly",
 		# Slabs represent normal (non-February) amounts.
 		# For salaries > ₹10,000 the February rule applies (see special_rules).
-		# Women earning ≤ ₹10,000/month are fully exempt.
+		# From 1 April 2023, women earning ≤ ₹25,000/month are fully exempt.
 		"slabs": [
 			{"upto": 7500, "amount": 0},
 			{"upto": 10000, "amount": 175},
@@ -98,7 +98,7 @@ STATE_PT_CONFIG = {
 			# 11 months * ₹200 + February * ₹300 = ₹2,500
 			"february_amount": 300,
 			# Women earning up to this monthly gross are fully exempt
-			"women_exemption_upto": 10000,
+			"women_exemption_upto": 25000,
 		},
 	},
 	"Meghalaya": {
@@ -264,7 +264,7 @@ def _compute_pt_monthly(gross_pay: float, state_config: dict, month: int, gender
 	Return the Professional Tax amount for a monthly-frequency state.
 
 	Handles:
-	  • Maharashtra women exemption (≤ ₹10,000 gross → exempt)
+	  • Maharashtra women exemption (≤ ₹25,000 gross → exempt)
 	  • Maharashtra February rule (₹300 instead of ₹200 for highest slab)
 	"""
 	special_rules = state_config.get("special_rules", {})
