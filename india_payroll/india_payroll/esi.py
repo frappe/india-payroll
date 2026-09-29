@@ -1,8 +1,7 @@
-import datetime
 import re
 
 import frappe
-from frappe.utils import flt, getdate
+from frappe.utils import flt
 
 from india_payroll.india_payroll.company_settings import is_statutory_enabled
 from india_payroll.india_payroll.epf import PF_WAGE_COMPONENT_PATTERNS
@@ -16,9 +15,6 @@ EMPLOYER_ESI_RATE = 0.0325
 
 ESI_WAGE_CEILING = 21_000
 ESI_WAGE_CEILING_DISABILITY = 25_000
-
-# Pay periods starting before this date keep the earlier basis of gross wages.
-ESI_WAGE_BASIS_REVISED_ON = datetime.date(2026, 10, 1)
 
 ESI_WAGE_COMPONENT_PATTERNS = (
 	*PF_WAGE_COMPONENT_PATTERNS,
@@ -91,13 +87,13 @@ def apply_esi(doc, method=None) -> None:
 	is_disabled = get_slip_ssa_values(doc, ["is_person_with_disability"]).get("is_person_with_disability")
 
 	split = get_esi_split(
-		esi_wage(doc.earnings, "amount", doc.start_date),
+		esi_wage(doc.earnings, "amount"),
 		is_person_with_disability=bool(is_disabled),
-		ceiling_gross=esi_wage(doc.earnings, "default_amount", doc.start_date),
+		ceiling_gross=esi_wage(doc.earnings, "default_amount"),
 	)
 
 	if not split.covered:
-		if _uses_wage_components(doc.start_date) and not _has_esi_wage_component(doc.earnings):
+		if not _has_esi_wage_component(doc.earnings):
 			frappe.msgprint(
 				frappe._(
 					"No Basic, Dearness Allowance or Retaining Allowance earning was found on "
@@ -130,22 +126,12 @@ def _employee_component_exists() -> bool:
 	return False
 
 
-def esi_wage(earnings, field="amount", on_date=None) -> float:
+def esi_wage(earnings, field="amount") -> float:
 	"""ESI is levied on Basic, Dearness Allowance and Retaining Allowance earnings.
 
 	``amount`` is the wage paid, ``default_amount`` the full cycle with no LOP.
-	Periods before ``ESI_WAGE_BASIS_REVISED_ON`` count every payable earning.
 	"""
-	wage_components_only = _uses_wage_components(on_date)
-	return sum(
-		flt(row.get(field))
-		for row in earnings
-		if _is_payable(row) and (not wage_components_only or _is_esi_wage_row(row))
-	)
-
-
-def _uses_wage_components(on_date=None) -> bool:
-	return not on_date or getdate(on_date) >= ESI_WAGE_BASIS_REVISED_ON
+	return sum(flt(row.get(field)) for row in earnings if _is_payable(row) and _is_esi_wage_row(row))
 
 
 def _is_payable(row) -> bool:
@@ -175,7 +161,7 @@ def _update_esi_in_salary_slip(doc, split) -> None:
 		doc.append("deductions", {"salary_component": ESI_EMPLOYEE_COMPONENT, "amount": split.employee})
 
 
-def get_employer_contributions(earnings, config, *, paid_field="amount", company=None, on_date=None) -> dict:
+def get_employer_contributions(earnings, config, *, paid_field="amount", company=None) -> dict:
 	"""Employer ESI, keyed by component.
 
 	Returns zero rather than omitting it, so a stale row gets cleared.
@@ -184,8 +170,8 @@ def get_employer_contributions(earnings, config, *, paid_field="amount", company
 		return {ESI_EMPLOYER_COMPONENT: 0.0}
 
 	split = get_esi_split(
-		esi_wage(earnings, paid_field, on_date),
+		esi_wage(earnings, paid_field),
 		is_person_with_disability=bool(config.get("is_person_with_disability")),
-		ceiling_gross=esi_wage(earnings, "default_amount", on_date),
+		ceiling_gross=esi_wage(earnings, "default_amount"),
 	)
 	return {ESI_EMPLOYER_COMPONENT: split.employer}

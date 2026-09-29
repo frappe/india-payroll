@@ -160,8 +160,8 @@ def get_data(filters):
 		is_pwd = bool(ssa.get("is_person_with_disability"))
 
 		# mirrors esi.apply_esi: coverage on the full-cycle wage, contribution on the paid wage
-		wages = esi_wage(earnings, "amount", row.start_date)
-		full_wages = esi_wage(earnings, "default_amount", row.start_date)
+		wages = esi_wage(earnings, "amount")
+		full_wages = esi_wage(earnings, "default_amount")
 		split = get_esi_split(wages, is_person_with_disability=is_pwd, ceiling_gross=full_wages)
 
 		if full_wages > split.ceiling:
