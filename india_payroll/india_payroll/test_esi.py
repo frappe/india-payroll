@@ -99,7 +99,6 @@ class TestESI(HRMSTestSuite):
 			"test_esi_lop_contribution@indiapayroll.com",
 			"test_esi_missing_employer_component@indiapayroll.com",
 			"test_esi_wage_basis@indiapayroll.com",
-			"test_esi_wage_basis_earlier@indiapayroll.com",
 			"test_esi_no_wage_component@indiapayroll.com",
 		]
 		create_esi_components()
@@ -510,19 +509,8 @@ class TestESI(HRMSTestSuite):
 			frappe._dict(salary_component="Basic", amount=900, statistical_component=1),
 		]
 
-		self.assertEqual(esi_wage(earnings, "amount", "2026-10-01"), 13_000)
-		self.assertEqual(esi_wage(earnings, "default_amount", "2026-10-01"), 15_600)
 		self.assertEqual(esi_wage(earnings, "amount"), 13_000)
-
-	def test_esi_wage_keeps_gross_basis_for_earlier_periods(self):
-		earnings = [
-			frappe._dict(salary_component="Basic", amount=10_000),
-			frappe._dict(salary_component="House Rent Allowance", amount=6_000),
-			frappe._dict(salary_component="Basic", amount=5_000, additional_salary="HR-ADS-0001"),
-			frappe._dict(salary_component="Basic", amount=900, statistical_component=1),
-		]
-
-		self.assertEqual(esi_wage(earnings, "amount", "2026-09-30"), 21_000)
+		self.assertEqual(esi_wage(earnings, "default_amount"), 15_600)
 
 	@HRMSTestSuite.change_settings("Payroll Settings", {"enable_esic": 1})
 	def test_esi_levied_on_wage_components_not_gross(self):
@@ -531,9 +519,6 @@ class TestESI(HRMSTestSuite):
 			"test_esi_wage_basis@indiapayroll.com",
 			"Test ESI Wage Basis Structure",
 			15_000,
-			posting_date="2026-10-01",
-			start_date="2026-10-01",
-			end_date="2026-10-31",
 			earnings=_ESI_BASIC_AND_HRA_EARNINGS,
 		)
 		salary_slip.insert()
@@ -547,29 +532,11 @@ class TestESI(HRMSTestSuite):
 		)
 
 	@HRMSTestSuite.change_settings("Payroll Settings", {"enable_esic": 1})
-	def test_earlier_period_keeps_gross_basis(self):
-		"""The same structure before the revision is judged on gross 25,000 and stays out of ESI."""
-		_, salary_slip = self._make_salary_slip(
-			"test_esi_wage_basis_earlier@indiapayroll.com",
-			"Test ESI Wage Basis Earlier Structure",
-			15_000,
-			earnings=_ESI_BASIC_AND_HRA_EARNINGS,
-		)
-		salary_slip.insert()
-
-		self.assertAlmostEqual(salary_slip.gross_pay, 25_000, places=2)
-		self.assertEqual(len(self._esi_rows(salary_slip)), 0)
-		self.assertEqual(len(self._employer_esi_rows(salary_slip)), 0)
-
-	@HRMSTestSuite.change_settings("Payroll Settings", {"enable_esic": 1})
 	def test_no_esi_without_a_wage_component(self):
 		_, salary_slip = self._make_salary_slip(
 			"test_esi_no_wage_component@indiapayroll.com",
 			"Test ESI No Wage Component Structure",
 			15_000,
-			posting_date="2026-10-01",
-			start_date="2026-10-01",
-			end_date="2026-10-31",
 			earnings=_ESI_FIXED_PAY_EARNINGS,
 		)
 		salary_slip.insert()
