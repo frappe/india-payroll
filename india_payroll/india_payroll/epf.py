@@ -118,7 +118,13 @@ def apply_epf(doc, method=None) -> None:
 		return
 
 	contribute_on_actual = bool(ssa.get("contribute_on_actual_pf_wage"))
-	pf_wage_capped = min(pf_wage, get_epf_wage_ceiling(doc.start_date, doc.end_date))
+	joining_date, relieving_date = frappe.get_cached_value(
+		"Employee", doc.employee, ["date_of_joining", "relieving_date"]
+	)
+	wage_ceiling = get_epf_wage_ceiling(
+		doc.start_date, doc.end_date, joining_date=joining_date, relieving_date=relieving_date
+	)
+	pf_wage_capped = min(pf_wage, wage_ceiling)
 	epf_base = pf_wage if contribute_on_actual else pf_wage_capped
 
 	employee_epf = _epfo_round(epf_base * EPF_EMPLOYEE_RATE)
@@ -133,16 +139,25 @@ def apply_epf(doc, method=None) -> None:
 	_apply_epf_components(doc, employee_epf=employee_epf, vpf=vpf)
 
 
-def get_epf_wage_ceiling(start_date, end_date=None) -> float:
+def get_epf_wage_ceiling(start_date, end_date=None, *, joining_date=None, relieving_date=None) -> float:
 	"""Monthly PF wage ceiling for a pay period.
 
 	S.O. 5109(E) raised the ceiling from ₹15,000 to ₹25,000 with effect from
 	17 Sept 2026. A period that straddles that date gets a ceiling weighted by
 	calendar days on each side, so September 2026 is capped at
 	15,000 * 16/30 + 25,000 * 14/30 = ₹19,666.67.
+
+	An employee who joined or left within the period is weighted on the days in
+	service only, so one relieved on 10 Sept 2026 stays at ₹15,000 and one
+	relieved on 20 Sept 2026 gets 15,000 * 16/20 + 25,000 * 4/20 = ₹17,000.
 	"""
 	start = getdate(start_date)
 	end = getdate(end_date) if end_date else start
+
+	if joining_date and start < getdate(joining_date) <= end:
+		start = getdate(joining_date)
+	if relieving_date and start <= getdate(relieving_date) < end:
+		end = getdate(relieving_date)
 
 	if start >= EPF_WAGE_CEILING_REVISED_ON:
 		return EPF_WAGE_CEILING

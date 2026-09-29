@@ -173,6 +173,8 @@ def get_data(filters):
 			SS.total_working_days,
 			Emp.department,
 			Emp.designation,
+			Emp.date_of_joining,
+			Emp.relieving_date,
 		)
 		.where(SS.docstatus == 1)
 	)
@@ -220,7 +222,9 @@ def get_data(filters):
 		vpf = flt(totals.get(VPF_COMPONENT))
 
 		contribute_on_actual = bool(s.get("contribute_on_actual_pf_wage"))
-		wage_ceiling = get_epf_wage_ceiling(s.start_date, s.end_date)
+		wage_ceiling = get_epf_wage_ceiling(
+			s.start_date, s.end_date, joining_date=s.date_of_joining, relieving_date=s.relieving_date
+		)
 		pf_wage_capped = min(pf_wage, wage_ceiling)
 		epf_base = pf_wage if contribute_on_actual else pf_wage_capped
 
