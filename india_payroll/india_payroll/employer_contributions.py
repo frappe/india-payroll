@@ -17,7 +17,9 @@ CONTRIBUTION_SOURCES = (esi.get_employer_contributions,)
 CONFIG_FIELDS = ("is_person_with_disability",)
 
 
-def compute_employer_contributions(earnings, config, *, paid_field="amount", company=None) -> dict:
+def compute_employer_contributions(
+	earnings, config, *, paid_field="amount", company=None, on_date=None
+) -> dict:
 	"""Every employer contribution for these earnings, keyed by component.
 
 	Eligibility always reads ``default_amount``. The paid wage differs by
@@ -25,7 +27,9 @@ def compute_employer_contributions(earnings, config, *, paid_field="amount", com
 	"""
 	amounts = {}
 	for get_contributions in CONTRIBUTION_SOURCES:
-		amounts.update(get_contributions(earnings, config, paid_field=paid_field, company=company))
+		amounts.update(
+			get_contributions(earnings, config, paid_field=paid_field, company=company, on_date=on_date)
+		)
 	return amounts
 
 
@@ -34,7 +38,11 @@ def apply_regional_ctc_components(assignment, rows_by_type, data) -> None:
 	earnings = rows_by_type.get("earnings") or []
 	# an assignment evaluates a full cycle, so full-cycle wage is the paid wage
 	contributions = compute_employer_contributions(
-		earnings, assignment, paid_field="default_amount", company=assignment.company
+		earnings,
+		assignment,
+		paid_field="default_amount",
+		company=assignment.company,
+		on_date=assignment.from_date,
 	)
 
 	for component, amount in contributions.items():
@@ -50,7 +58,9 @@ def set_slip_employer_contributions(doc) -> None:
 		return
 
 	config = get_slip_ssa_values(doc, list(CONFIG_FIELDS))
-	amounts = compute_employer_contributions(doc.earnings, config, company=doc.company)
+	amounts = compute_employer_contributions(
+		doc.earnings, config, company=doc.company, on_date=doc.start_date
+	)
 
 	for component, amount in amounts.items():
 		doc.employer_contributions = [
