@@ -20,7 +20,10 @@ from india_payroll.india_payroll.epf import (
 	EPF_PREVIOUS_WAGE_CEILING,
 	EPF_WAGE_CEILING,
 	VPF_COMPONENT,
+	cap_pf_wage,
 	get_epf_wage_ceiling,
+	get_epf_wage_ceilings,
+	get_eps_wage,
 )
 from india_payroll.install import create_epf_components
 
@@ -74,6 +77,7 @@ _TEST_EMAILS = [
 	"test_epf_split_month@indiapayroll.com",
 	"test_epf_relieved_before_revision@indiapayroll.com",
 	"test_epf_relieved_after_revision@indiapayroll.com",
+	"test_epf_between_ceilings@indiapayroll.com",
 ]
 
 
@@ -381,6 +385,75 @@ class TestEPF(HRMSTestSuite):
 		slip.insert()
 
 		self.assertEqual(self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT), 2_360)
+
+	def test_pf_wage_is_capped_under_each_ceiling(self):
+		"""A wage between the two ceilings is capped at 15,000 only for the earlier days."""
+		september = get_epf_wage_ceilings("2026-09-01", "2026-09-30")
+		self.assertEqual(september, [(15_000, 16 / 30), (25_000, 14 / 30)])
+
+		for pf_wage, expected in (
+			(14_000, 14_000),
+			(15_000, 15_000),
+			(20_000, 17_333.33),
+			(25_000, 19_666.67),
+			(30_000, 19_666.67),
+		):
+			with self.subTest(pf_wage=pf_wage):
+				self.assertEqual(cap_pf_wage(pf_wage, september), expected)
+
+		self.assertEqual(cap_pf_wage(20_000, get_epf_wage_ceilings("2026-08-01", "2026-08-31")), 15_000)
+		self.assertEqual(cap_pf_wage(20_000, get_epf_wage_ceilings("2026-10-01", "2026-10-31")), 20_000)
+
+		# Relieved 20 Sept: 16 days capped at 15,000, 4 days at the full 20,000.
+		relieved = get_epf_wage_ceilings("2026-09-01", "2026-09-30", relieving_date="2026-09-20")
+		self.assertEqual(cap_pf_wage(20_000, relieved), 16_000)
+
+	def test_eps_wage_follows_each_ceiling(self):
+		"""EPS is earned only on the days whose ceiling the PF wage does not exceed."""
+		september = get_epf_wage_ceilings("2026-09-01", "2026-09-30")
+
+		for pf_wage, expected in (
+			(14_000, 14_000),
+			(20_000, 9_333.33),
+			(25_000, 11_666.67),
+			(30_000, 0),
+		):
+			with self.subTest(pf_wage=pf_wage):
+				self.assertEqual(get_eps_wage(pf_wage, september), expected)
+
+		self.assertEqual(get_eps_wage(20_000, get_epf_wage_ceilings("2026-08-01", "2026-08-31")), 0)
+		self.assertEqual(get_eps_wage(20_000, get_epf_wage_ceilings("2026-10-01", "2026-10-31")), 20_000)
+
+	@HRMSTestSuite.change_settings(
+		"Payroll Settings",
+		{"enable_epf": 1, "enable_professional_tax": 0, "enable_esic": 0, "enable_lwf": 0},
+	)
+	def test_split_month_wage_between_ceilings(self):
+		"""September 2026, PF wage ₹20,000: 12% of 17,333.33 → ₹2,080, not 12% of 19,666.67."""
+		from india_payroll.india_payroll.report.employee_provident_fund_register.employee_provident_fund_register import (
+			execute,
+		)
+
+		employee, slip = self._make_salary_slip(
+			"test_epf_between_ceilings@indiapayroll.com",
+			"Test EPF Between Ceilings Structure",
+			20_000.0,
+			posting_date="2026-09-01",
+			start_date="2026-09-01",
+			end_date="2026-09-30",
+		)
+		slip.insert()
+		slip.submit()
+
+		self.assertEqual(self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT), 2_080)
+
+		rows = execute(frappe._dict({"company": "_Test Company", "from_year": 2026, "month": "September"}))[1]
+		row = next(r for r in rows if r["employee"] == employee)
+		self.assertEqual(row["epf_wages"], 17_333.33)
+		self.assertEqual(row["edli_wages"], 17_333.33)
+		self.assertEqual(row["eps_wages"], 9_333.33)
+		self.assertEqual(row["eps_contribution"], 777)
+		self.assertEqual(row["employer_epf_diff"], 2_080 - 777)
 
 	def test_wage_ceiling_follows_days_in_service(self):
 		"""Joining or leaving within the period weights the ceiling on the days in service."""
