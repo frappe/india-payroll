@@ -149,17 +149,27 @@ def get_epf_wage_ceilings(
 	on each side, so September 2026 is [(15,000, 16/30), (25,000, 14/30)].
 
 	An employee who joined or left within the period is weighted on the days in
-	service only, so one relieved on 10 Sept 2026 stays at ₹15,000 and one
-	relieved on 20 Sept 2026 gets [(15,000, 16/20), (25,000, 4/20)].
+	service, but never gets a larger revised share than the whole period. One
+	relieved on 20 Sept 2026 gets [(15,000, 16/20), (25,000, 4/20)], while one
+	who joined on 7 Sept 2026 keeps the whole period's [(15,000, 16/30),
+	(25,000, 14/30)] rather than 14/24 at the revised ceiling.
 	"""
 	start = getdate(start_date)
 	end = getdate(end_date) if end_date else start
+	period = _ceiling_shares(start, end)
 
 	if joining_date and start < getdate(joining_date) <= end:
 		start = getdate(joining_date)
 	if relieving_date and start <= getdate(relieving_date) < end:
 		end = getdate(relieving_date)
+	service = _ceiling_shares(start, end)
 
+	if _revised_share(service) > _revised_share(period):
+		return period
+	return service
+
+
+def _ceiling_shares(start: datetime.date, end: datetime.date) -> list[tuple[float, float]]:
 	if start >= EPF_WAGE_CEILING_REVISED_ON:
 		return [(EPF_WAGE_CEILING, 1.0)]
 	if end < EPF_WAGE_CEILING_REVISED_ON:
@@ -171,6 +181,10 @@ def get_epf_wage_ceilings(
 		(EPF_PREVIOUS_WAGE_CEILING, (total_days - revised_days) / total_days),
 		(EPF_WAGE_CEILING, revised_days / total_days),
 	]
+
+
+def _revised_share(ceilings: list[tuple[float, float]]) -> float:
+	return sum(share for ceiling, share in ceilings if ceiling == EPF_WAGE_CEILING)
 
 
 def get_epf_wage_ceiling(start_date, end_date=None, *, joining_date=None, relieving_date=None) -> float:
