@@ -9,7 +9,7 @@ never leave the site.
 import frappe
 from frappe.database import savepoint
 from frappe.query_builder.functions import Count
-from frappe.utils import add_days, date_diff, getdate, today
+from frappe.utils import date_diff, today
 from frappe.utils.telemetry import capture as _capture
 from frappe.utils.telemetry import is_pulse_enabled as is_enabled
 from frappe.utils.telemetry import site_age
@@ -19,6 +19,7 @@ from india_payroll.india_payroll.epf import EPF_EMPLOYEE_COMPONENT, VPF_COMPONEN
 from india_payroll.india_payroll.esi import ESI_EMPLOYEE_COMPONENT
 from india_payroll.india_payroll.lwf import LWF_SALARY_COMPONENT
 from india_payroll.india_payroll.professional_tax import PT_SALARY_COMPONENT
+from india_payroll.india_payroll.tds.data_assembly import get_income_tax_components
 
 APP = "india_payroll"
 MILESTONE_DOCTYPE = "India Payroll Telemetry Milestone"
@@ -109,7 +110,7 @@ def days_since_install() -> int | None:
 	return date_diff(today(), installed_on) + 1
 
 
-def capture_first(event: str, properties: dict | None = None) -> None:
+def capture_first(event: str, properties: dict | None = None, *, outcome: bool = False) -> None:
 	"""Record a first-time milestone, only for sites that installed the app recently."""
 	if _should_skip():
 		return
@@ -121,7 +122,8 @@ def capture_first(event: str, properties: dict | None = None) -> None:
 	if not _claim_milestone(event):
 		return
 
-	capture(event, {"day_since_install": age, **(properties or {})})
+	send = capture_outcome if outcome else capture
+	send(event, {"day_since_install": age, **(properties or {})})
 
 
 def _track_conversion() -> None:
@@ -179,11 +181,10 @@ def on_payroll_settings_update(doc, method=None):
 		},
 	)
 
-	for statute, enabled in flags.items():
-		if enabled:
-			capture_first(f"{statute}_enabled")
-	if doc.get("enable_tds_filing"):
-		capture_first("tds_filing_enabled")
+	toggles = {**STATUTE_TOGGLE_FIELDS, "tds_filing": "enable_tds_filing"}
+	for name, field in toggles.items():
+		if doc.get(field) and doc.has_value_changed(field):
+			capture_first(f"{name}_enabled")
 
 
 # ---- Payroll -----------------------------------------------------------------
@@ -195,68 +196,77 @@ def on_salary_slip_submit(doc, method=None):
 		if components.intersection(names):
 			capture_first(f"first_{statute}_deducted")
 
+	_queue_submitted_slip(doc.name)
 
-def capture_daily_payroll_summary():
-	"""Statutory coverage of the salary slips submitted on the day that just ended."""
+
+def _queue_submitted_slip(name: str) -> None:
 	if _should_skip():
 		return
 
-	day = add_days(today(), -1)
+	pending = frappe.flags.india_payroll_submitted_slips
+	if pending is None:
+		pending = frappe.flags.india_payroll_submitted_slips = {
+			"slips": [],
+			"via_payroll_entry": bool(frappe.flags.via_payroll_entry),
+		}
+		frappe.db.after_commit.add(flush_submitted_slips)
+		frappe.db.after_rollback.add(_discard_submitted_slips)
+
+	pending["slips"].append(name)
+
+
+def _discard_submitted_slips() -> None:
+	frappe.flags.india_payroll_submitted_slips = None
+
+
+def flush_submitted_slips() -> None:
+	"""Statutory coverage of the salary slips submitted in the transaction that just committed."""
+	pending = frappe.flags.india_payroll_submitted_slips
+	_discard_submitted_slips()
+	if not pending or not pending["slips"]:
+		return
+
 	SalarySlip = frappe.qb.DocType("Salary Slip")
 	SalaryDetail = frappe.qb.DocType("Salary Detail")
-
-	day_filter = (
-		(SalarySlip.docstatus == 1)
-		& (SalarySlip.modified >= f"{day} 00:00:00")
-		& (SalarySlip.modified <= f"{day} 23:59:59")
-	)
+	submitted = (SalarySlip.docstatus == 1) & SalarySlip.name.isin(pending["slips"])
 
 	slips, companies = (
 		frappe.qb.from_(SalarySlip)
 		.select(Count(SalarySlip.name), Count(SalarySlip.company).distinct())
-		.where(day_filter)
+		.where(submitted)
 	).run()[0]
 
 	if not slips:
 		return
 
-	rows = (
-		frappe.qb.from_(SalaryDetail)
-		.join(SalarySlip)
-		.on(SalaryDetail.parent == SalarySlip.name)
-		.select(SalaryDetail.salary_component, Count(SalaryDetail.parent).distinct())
-		.where(day_filter & (SalaryDetail.parenttype == "Salary Slip"))
-		.groupby(SalaryDetail.salary_component)
-	).run()
-	slips_by_component = dict(rows)
+	def slips_with(condition) -> int:
+		return (
+			frappe.qb.from_(SalaryDetail)
+			.join(SalarySlip)
+			.on(SalaryDetail.parent == SalarySlip.name)
+			.select(Count(SalaryDetail.parent).distinct())
+			.where(submitted & (SalaryDetail.parenttype == "Salary Slip") & condition)
+		).run()[0][0] or 0
 
-	with_income_tax = (
-		frappe.qb.from_(SalaryDetail)
-		.join(SalarySlip)
-		.on(SalaryDetail.parent == SalarySlip.name)
-		.select(Count(SalaryDetail.parent).distinct())
-		.where(
-			day_filter
-			& (SalaryDetail.parenttype == "Salary Slip")
-			& (SalaryDetail.variable_based_on_taxable_salary == 1)
-		)
-	).run()[0][0]
+	income_tax_row = SalaryDetail.variable_based_on_taxable_salary == 1
+	if income_tax_components := get_income_tax_components():
+		income_tax_row |= SalaryDetail.salary_component.isin(income_tax_components)
 
 	settings = frappe.get_cached_doc("Payroll Settings")
 
 	capture_outcome(
-		"payroll_daily_summary",
+		"salary_slips_submitted",
 		{
 			"slips_submitted": slips,
 			"companies": companies,
+			"via_payroll_entry": pending["via_payroll_entry"],
 			**{
-				f"slips_with_{statute}": sum(slips_by_component.get(name, 0) for name in names)
+				f"slips_with_{statute}": slips_with(SalaryDetail.salary_component.isin(names))
 				for statute, names in STATUTORY_COMPONENTS.items()
 			},
-			"slips_with_income_tax": with_income_tax or 0,
+			"slips_with_income_tax": slips_with(income_tax_row),
 			**{f"{statute}_enabled": enabled for statute, enabled in _statutory_flags(settings).items()},
 			"multi_company": bool(settings.get(MULTI_COMPANY_FIELD)),
-			"weekday": getdate(day).weekday(),
 		},
 	)
 
@@ -307,12 +317,12 @@ def on_tds_challan_submit(doc, method=None):
 
 def on_filing_step_started(doc, step: str) -> None:
 	capture("tds_filing_step_started", {"step": step, **_return_properties(doc)})
-	if step == "e_file":
-		capture_first("first_tds_return_filed", {"quarter": doc.quarter})
 
 
 def on_filing_step_finished(doc, step: str, outcome: str) -> None:
 	capture_outcome("tds_filing_step_finished", {"step": step, "outcome": outcome, **_return_properties(doc)})
+	if step == "e_file" and outcome == "succeeded":
+		capture_first("first_tds_return_filed", {"quarter": doc.quarter}, outcome=True)
 
 
 def on_validation_skipped(doc) -> None:

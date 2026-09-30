@@ -19,7 +19,6 @@ from india_payroll.telemetry import (
 )
 
 FROZEN_TODAY = "2026-03-12"
-FROZEN_YESTERDAY = "2026-03-11"
 
 
 class TestIndiaPayrollTelemetry(HRMSTestSuite):
@@ -41,6 +40,8 @@ class TestIndiaPayrollTelemetry(HRMSTestSuite):
 			self.addCleanup(p.stop)
 
 		frappe.db.delete(MILESTONE_DOCTYPE)
+		telemetry._discard_submitted_slips()
+		self.addCleanup(telemetry._discard_submitted_slips)
 
 	def events(self, name: str) -> list[dict]:
 		return [props for event, _app, props in self.captured if event == name]
@@ -135,6 +136,30 @@ class TestIndiaPayrollTelemetry(HRMSTestSuite):
 		settings.save()
 		self.assertEqual(self.events("statutory_settings_updated"), [])
 
+	def test_changing_one_toggle_does_not_mark_other_enabled_statutes(self):
+		self.set_milestone(INSTALL_MILESTONE, 2)
+		settings = frappe.get_doc("Payroll Settings")
+		settings.enable_epf = 1
+		settings.enable_esic = 0
+		settings.save()
+		frappe.db.delete(MILESTONE_DOCTYPE, {"event": ["like", "%_enabled"]})
+		self.captured.clear()
+
+		settings.reload()
+		settings.enable_esic = 1
+		settings.save()
+
+		self.assertEqual(len(self.events("statutory_settings_updated")), 1)
+		self.assertEqual(self.events("esic_enabled"), [{"day_since_install": 3}])
+		self.assertEqual(self.events("epf_enabled"), [])
+		self.assertFalse(frappe.db.exists(MILESTONE_DOCTYPE, "epf_enabled"))
+
+		settings.reload()
+		settings.enable_esic = 0
+		settings.save()
+		self.assertEqual(len(self.events("statutory_settings_updated")), 2)
+		self.assertEqual(len(self.events("esic_enabled")), 1)
+
 	def test_salary_slip_submit_marks_each_statutory_deduction_once(self):
 		self.set_milestone(INSTALL_MILESTONE, 1)
 		slip = frappe._dict(
@@ -166,36 +191,107 @@ class TestIndiaPayrollTelemetry(HRMSTestSuite):
 		self.assertEqual(self.events("tds_filing_step_started"), [expected])
 		self.assertEqual(self.events("tds_filing_step_finished"), [{**expected, "outcome": "failed"}])
 
-	def test_daily_summary_counts_yesterdays_slips_by_statutory_component(self):
-		frappe.db.delete("Salary Slip", {"modified": ["between", [FROZEN_YESTERDAY, FROZEN_TODAY]]})
-		insert_submitted_slip(FROZEN_YESTERDAY, [EPF_EMPLOYEE_COMPONENT, ESI_EMPLOYEE_COMPONENT])
-		insert_submitted_slip(FROZEN_YESTERDAY, [EPF_EMPLOYEE_COMPONENT], income_tax=True)
-		insert_submitted_slip(FROZEN_TODAY, [EPF_EMPLOYEE_COMPONENT])
+	def test_first_filed_milestone_waits_for_a_successful_e_file(self):
+		self.set_milestone(INSTALL_MILESTONE, 1)
+		doc = frappe._dict(quarter="Q1", return_type="Original", deductees=[])
 
-		telemetry.capture_daily_payroll_summary()
+		telemetry.on_filing_step_started(doc, "e_file")
+		telemetry.on_filing_step_finished(doc, "e_file", "failed")
+		telemetry.on_filing_step_finished(doc, "generate_fvu", "succeeded")
+		self.assertEqual(self.events("first_tds_return_filed"), [])
+		self.assertFalse(frappe.db.exists(MILESTONE_DOCTYPE, "first_tds_return_filed"))
 
-		[props] = self.events("payroll_daily_summary")
+		frappe.db.delete(MILESTONE_DOCTYPE, {"event": FIRST_CAPTURE_MILESTONE})
+		telemetry.on_filing_step_finished(doc, "e_file", "succeeded")
+		telemetry.on_filing_step_finished(doc, "e_file", "succeeded")
+
+		self.assertEqual(self.events("first_tds_return_filed"), [{"day_since_install": 2, "quarter": "Q1"}])
+		self.assertFalse(frappe.db.exists(MILESTONE_DOCTYPE, FIRST_CAPTURE_MILESTONE))
+
+	def submit_batch(self, *slips: str):
+		for name in slips:
+			telemetry._queue_submitted_slip(name)
+		telemetry.flush_submitted_slips()
+
+	def test_slip_batch_counts_each_statutory_component(self):
+		self.submit_batch(
+			insert_slip([EPF_EMPLOYEE_COMPONENT, ESI_EMPLOYEE_COMPONENT]),
+			insert_slip([EPF_EMPLOYEE_COMPONENT], income_tax=True),
+		)
+
+		[props] = self.events("salary_slips_submitted")
 		self.assertEqual(props["slips_submitted"], 2)
 		self.assertEqual(props["slips_with_epf"], 2)
 		self.assertEqual(props["slips_with_esic"], 1)
 		self.assertEqual(props["slips_with_lwf"], 0)
 		self.assertEqual(props["slips_with_income_tax"], 1)
-		self.assertEqual(props["weekday"], 2)
+		self.assertFalse(props["via_payroll_entry"])
 		self.assertFalse(frappe.db.exists(MILESTONE_DOCTYPE, FIRST_CAPTURE_MILESTONE))
 
-	def test_daily_summary_is_skipped_when_no_slips_were_submitted(self):
-		frappe.db.delete("Salary Slip", {"modified": ["between", [FROZEN_YESTERDAY, FROZEN_TODAY]]})
-		telemetry.capture_daily_payroll_summary()
-		self.assertEqual(self.events("payroll_daily_summary"), [])
+	def test_slip_batch_ignores_earlier_slips_modified_in_the_same_window(self):
+		insert_slip([EPF_EMPLOYEE_COMPONENT], modified=frappe.utils.now())
+		self.submit_batch(insert_slip([PT_SALARY_COMPONENT]))
+
+		[props] = self.events("salary_slips_submitted")
+		self.assertEqual(props["slips_submitted"], 1)
+		self.assertEqual(props["slips_with_epf"], 0)
+		self.assertEqual(props["slips_with_professional_tax"], 1)
+
+	def test_slip_batch_counts_components_flagged_only_as_income_tax(self):
+		make_flagged_income_tax_component()
+		self.submit_batch(
+			insert_slip([TDS_ONLY_COMPONENT]),
+			insert_slip([EPF_EMPLOYEE_COMPONENT], income_tax=True),
+			insert_slip([EPF_EMPLOYEE_COMPONENT]),
+		)
+
+		[props] = self.events("salary_slips_submitted")
+		self.assertEqual(props["slips_submitted"], 3)
+		self.assertEqual(props["slips_with_income_tax"], 2)
+
+	def test_slip_batch_skips_slips_that_did_not_stay_submitted(self):
+		self.submit_batch(insert_slip([EPF_EMPLOYEE_COMPONENT], docstatus=0))
+		self.assertEqual(self.events("salary_slips_submitted"), [])
+
+	def test_queued_slips_are_sent_after_commit_and_dropped_on_rollback(self):
+		self.addCleanup(telemetry._discard_submitted_slips)
+		telemetry._queue_submitted_slip(insert_slip([EPF_EMPLOYEE_COMPONENT]))
+		telemetry._queue_submitted_slip(insert_slip([EPF_EMPLOYEE_COMPONENT]))
+
+		self.assertEqual(list(frappe.db.after_commit._functions).count(telemetry.flush_submitted_slips), 1)
+		self.assertIn(telemetry._discard_submitted_slips, frappe.db.after_rollback._functions)
+		self.assertEqual(len(frappe.flags.india_payroll_submitted_slips["slips"]), 2)
+
+		telemetry._discard_submitted_slips()
+		telemetry.flush_submitted_slips()
+		self.assertEqual(self.events("salary_slips_submitted"), [])
 
 
-def insert_submitted_slip(day: str, components: list[str], income_tax: bool = False) -> str:
+TDS_ONLY_COMPONENT = "_Test Telemetry TDS"
+
+
+def make_flagged_income_tax_component():
+	if frappe.db.exists("Salary Component", TDS_ONLY_COMPONENT):
+		return
+	frappe.get_doc(
+		{
+			"doctype": "Salary Component",
+			"salary_component": TDS_ONLY_COMPONENT,
+			"salary_component_abbr": "_TTDS",
+			"type": "Deduction",
+			"is_income_tax_component": 1,
+		}
+	).insert()
+
+
+def insert_slip(
+	components: list[str], income_tax: bool = False, docstatus: int = 1, modified: str = "2026-01-15 12:00:00"
+) -> str:
 	name = f"_Test Telemetry Slip {frappe.generate_hash(length=8)}"
-	timestamp = f"{day} 12:00:00"
 	frappe.db.sql(
 		"""insert into `tabSalary Slip` (name, docstatus, company, creation, modified)
-		values (%s, 1, '_Test Company', %s, %s)""",
-		(name, timestamp, timestamp),
+		values (%s, %s, '_Test Company', %s, %s)""",
+		(name, docstatus, modified, modified),
 	)
 	rows = [(component, 0) for component in components]
 	if income_tax:

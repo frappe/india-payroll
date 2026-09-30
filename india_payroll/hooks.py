@@ -160,7 +160,6 @@ scheduler_events = {
 			"india_payroll.india_payroll.tds.form16.poll_form16_jobs",
 		],
 	},
-	"daily": ["india_payroll.telemetry.capture_daily_payroll_summary"],
 }
 
 # Testing
