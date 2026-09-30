@@ -16,9 +16,14 @@ from hrms.payroll.doctype.salary_structure.test_salary_structure import (
 from hrms.tests.utils import HRMSTestSuite
 
 from india_payroll.india_payroll.epf import (
+	EDLI_COMPONENT,
+	EPF_ADMIN_COMPONENT,
 	EPF_EMPLOYEE_COMPONENT,
+	EPF_EMPLOYER_COMPONENT,
+	EPF_EMPLOYER_COMPONENTS,
 	EPF_PREVIOUS_WAGE_CEILING,
 	EPF_WAGE_CEILING,
+	EPS_COMPONENT,
 	VPF_COMPONENT,
 	cap_pf_wage,
 	get_epf_wage_ceiling,
@@ -79,15 +84,17 @@ _TEST_EMAILS = [
 	"test_epf_relieved_after_revision@indiapayroll.com",
 	"test_epf_between_ceilings@indiapayroll.com",
 	"test_epf_joined_mid_period@indiapayroll.com",
+	"test_epf_employer_on_slip@indiapayroll.com",
+	"test_epf_employer_lop@indiapayroll.com",
+	"test_epf_employer_ctc@indiapayroll.com",
+	"test_epf_employer_not_applicable@indiapayroll.com",
 ]
 
 
 class TestEPF(HRMSTestSuite):
 	"""
-	Covers the employee-side EPF deduction injected by ``apply_epf`` onto the
-	salary slip.  Employer EPF / EPS / EDLI / Admin are now "Employer
-	Contribution" components evaluated by Salary Structure Assignment into
-	CTC — they don't appear on the slip and are not exercised here.
+	Covers the EPF rows injected onto the salary slip: the employee deduction
+	from ``apply_epf`` and the employer EPF / EPS / EDLI / Admin contributions.
 	"""
 
 	def setUp(self):
@@ -840,8 +847,7 @@ class TestEPF(HRMSTestSuite):
 	def test_net_pay_reduced_only_by_employee_share(self):
 		"""
 		Net pay must drop only by Employee PF + VPF.  Employer contributions
-		are now off-slip (Salary Structure / CTC), so they cannot shift net
-		pay or gross even structurally.
+		sit in employer_contributions, so they cannot shift net pay or gross.
 		"""
 		gross = float(EPF_PREVIOUS_WAGE_CEILING)
 		employee, slip = self._make_salary_slip(
@@ -856,3 +862,92 @@ class TestEPF(HRMSTestSuite):
 		self.assertAlmostEqual(slip.total_deduction, expected_deduction, places=2)
 		self.assertAlmostEqual(slip.gross_pay, gross, places=2)
 		self.assertAlmostEqual(slip.net_pay, gross - expected_deduction, places=2)
+
+	@HRMSTestSuite.change_settings(
+		"Payroll Settings",
+		{"enable_epf": 1, "enable_professional_tax": 0, "enable_esic": 0, "enable_lwf": 0},
+	)
+	def test_employer_epf_on_slip_without_structure_rows(self):
+		gross = float(EPF_PREVIOUS_WAGE_CEILING)
+		_, slip = self._make_salary_slip(
+			"test_epf_employer_on_slip@indiapayroll.com",
+			"Test EPF Employer On Slip Structure",
+			gross,
+		)
+		slip.insert()
+
+		self.assertEqual(self._amount(slip, "employer_contributions", EPS_COMPONENT), 1_250)
+		self.assertEqual(self._amount(slip, "employer_contributions", EPF_EMPLOYER_COMPONENT), 550)
+		self.assertEqual(self._amount(slip, "employer_contributions", EDLI_COMPONENT), 75)
+		self.assertEqual(self._amount(slip, "employer_contributions", EPF_ADMIN_COMPONENT), 75)
+		self.assertAlmostEqual(slip.gross_pay, gross, places=2)
+		self.assertAlmostEqual(slip.net_pay, gross - 1_800, places=2)
+
+	@HRMSTestSuite.change_settings(
+		"Payroll Settings",
+		{
+			"enable_epf": 1,
+			"enable_professional_tax": 0,
+			"enable_esic": 0,
+			"enable_lwf": 0,
+			"payroll_based_on": "Attendance",
+			"consider_unmarked_attendance_as": "Present",
+		},
+	)
+	def test_employer_epf_on_lop_matches_epf_register(self):
+		from india_payroll.india_payroll.report.employee_provident_fund_register.employee_provident_fund_register import (
+			execute,
+		)
+
+		employee, slip = self._make_lop_salary_slip(
+			"test_epf_employer_lop@indiapayroll.com",
+			"Test EPF Employer LOP Structure",
+			16_000.0,
+		)
+		slip.insert()
+		slip.submit()
+
+		rows = execute(frappe._dict({"company": "_Test Company", "from_year": 2026, "month": "June"}))[1]
+		row = next(r for r in rows if r["employee"] == employee)
+
+		self.assertEqual(self._amount(slip, "employer_contributions", EPS_COMPONENT), row["eps_contribution"])
+		self.assertEqual(
+			self._amount(slip, "employer_contributions", EPF_EMPLOYER_COMPONENT), row["employer_epf_diff"]
+		)
+
+	@HRMSTestSuite.change_settings(
+		"Payroll Settings",
+		{"enable_epf": 1, "enable_professional_tax": 0, "enable_esic": 0, "enable_lwf": 0},
+	)
+	def test_employer_epf_reaches_ctc(self):
+		employee, _ = self._make_salary_slip(
+			"test_epf_employer_ctc@indiapayroll.com",
+			"Test EPF Employer CTC Structure",
+			float(EPF_PREVIOUS_WAGE_CEILING),
+		)
+		ssa = frappe.get_doc("Salary Structure Assignment", self._set_ssa(employee, {"epf_applicable": 1}))
+		ssa.calculate_ctc_and_gross()
+
+		rows = {
+			r.salary_component: r.default_amount
+			for r in ssa.get_evaluated_components()["employer_contributions"]
+		}
+		self.assertEqual(rows.get(EPS_COMPONENT), 1_250)
+		self.assertEqual(rows.get(EPF_EMPLOYER_COMPONENT), 550)
+		self.assertAlmostEqual(ssa.ctc - ssa.annual_gross_earning, (1_800 + 75 + 75) * 12, places=2)
+
+	@HRMSTestSuite.change_settings(
+		"Payroll Settings",
+		{"enable_epf": 1, "enable_professional_tax": 0, "enable_esic": 0, "enable_lwf": 0},
+	)
+	def test_no_employer_epf_when_not_applicable(self):
+		_, slip = self._make_salary_slip(
+			"test_epf_employer_not_applicable@indiapayroll.com",
+			"Test EPF Employer Not Applicable Structure",
+			15_000.0,
+			epf_applicable=False,
+		)
+		slip.insert()
+
+		for component in EPF_EMPLOYER_COMPONENTS:
+			self.assertEqual(self._amount(slip, "employer_contributions", component), 0)

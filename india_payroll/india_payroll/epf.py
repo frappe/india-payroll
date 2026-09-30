@@ -11,18 +11,21 @@ from india_payroll.india_payroll.company_settings import is_statutory_enabled
 from india_payroll.india_payroll.utils import get_slip_ssa_values
 
 # Employee deductions (reduce net pay).  Employer EPF/EPS/EDLI/Admin are
-# components of type "Employer Contribution" and live on the Salary Structure's
-# employer_contributions table — they're rolled into CTC by Salary Structure
-# Assignment and are not injected onto the slip.
+# components of type "Employer Contribution", computed by
+# ``get_employer_contributions`` for both the slip and CTC.
 EPF_EMPLOYEE_COMPONENT = "Provident Fund"
 VPF_COMPONENT = "Voluntary Provident Fund"
 
 EPF_EMPLOYEE_COMPONENTS = (EPF_EMPLOYEE_COMPONENT, VPF_COMPONENT)
 
+EPF_EMPLOYER_COMPONENT = "Employer Provident Fund"
+EPS_COMPONENT = "Employer Pension Scheme"
+EDLI_COMPONENT = "Employees Deposit Linked Insurance"
+EPF_ADMIN_COMPONENT = "EPF Admin Charges"
+
+EPF_EMPLOYER_COMPONENTS = (EPF_EMPLOYER_COMPONENT, EPS_COMPONENT, EDLI_COMPONENT, EPF_ADMIN_COMPONENT)
+
 # --- Statutory constants --------------------------------------------------
-# Employer-side rates remain here even though the slip hook no longer applies
-# them — the EPF register / ECR report reads them when reconstructing the
-# canonical employer split per EPFO statute.
 EPF_WAGE_CEILING = 25_000  # PF / EPS / EDLI statutory ceiling (S.O. 5109(E))
 EPF_WAGE_CEILING_REVISED_ON = datetime.date(2026, 9, 17)
 EPF_PREVIOUS_WAGE_CEILING = 15_000  # in force until 16 Sept 2026
@@ -63,9 +66,8 @@ def apply_epf(doc, method=None) -> None:
 	  • Employee contribution (12 %)   → deductions
 	  • VPF top-up (optional)          → deductions
 
-	Employer contributions (EPF / EPS / EDLI / Admin) are configured as
-	"Employer Contribution" components on the Salary Structure and handled
-	by Salary Structure Assignment / CTC — not by this hook.
+	Employer contributions (EPF / EPS / EDLI / Admin) come from
+	``get_employer_contributions``, not this hook.
 
 	Contributions are computed on PF wage — the Basic and Dearness Allowance
 	earnings on the slip only (see ``_compute_pf_wage``) — never on gross pay.
@@ -137,6 +139,41 @@ def apply_epf(doc, method=None) -> None:
 	)
 
 	_apply_epf_components(doc, employee_epf=employee_epf, vpf=vpf)
+
+
+def get_employer_contributions(earnings, config, *, paid_field="amount", company=None) -> dict:
+	"""Employer EPF, EPS, EDLI and admin charges, keyed by component.
+
+	Uses the same split as the EPF register. Returns zeros rather than
+	omitting them, so a stale row gets cleared.
+	"""
+	amounts = dict.fromkeys(EPF_EMPLOYER_COMPONENTS, 0.0)
+	if not is_statutory_enabled("epf", company) or not config.get("epf_applicable"):
+		return amounts
+
+	pf_wage = sum(flt(e.get(paid_field)) for e in earnings if _is_pf_wage_row(e))
+	if pf_wage <= 0:
+		return amounts
+
+	ceilings = get_epf_wage_ceilings(
+		config.get("start_date"),
+		config.get("end_date"),
+		joining_date=config.get("joining_date"),
+		relieving_date=config.get("relieving_date"),
+	)
+	pf_wage_capped = cap_pf_wage(pf_wage, ceilings)
+	epf_base = pf_wage if config.get("contribute_on_actual_pf_wage") else pf_wage_capped
+
+	eps = _epfo_round(get_eps_wage(pf_wage, ceilings) * EPS_RATE)
+	amounts.update(
+		{
+			EPF_EMPLOYER_COMPONENT: max(0, _epfo_round(epf_base * EPF_EMPLOYER_RATE) - eps),
+			EPS_COMPONENT: eps,
+			EDLI_COMPONENT: _epfo_round(pf_wage_capped * EDLI_RATE),
+			EPF_ADMIN_COMPONENT: _epfo_round(epf_base * EPF_ADMIN_RATE),
+		}
+	)
+	return amounts
 
 
 def get_epf_wage_ceilings(

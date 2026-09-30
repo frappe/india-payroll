@@ -8,13 +8,13 @@ entry; neither hook below changes.
 import frappe
 from frappe.utils import flt
 
-from india_payroll.india_payroll import esi
+from india_payroll.india_payroll import epf, esi
 from india_payroll.india_payroll.utils import get_slip_ssa_values
 
-CONTRIBUTION_SOURCES = (esi.get_employer_contributions,)
+CONTRIBUTION_SOURCES = (esi.get_employer_contributions, epf.get_employer_contributions)
 
 # assignment fields the sources read
-CONFIG_FIELDS = ("is_person_with_disability",)
+CONFIG_FIELDS = ("is_person_with_disability", "epf_applicable", "contribute_on_actual_pf_wage")
 
 
 def compute_employer_contributions(earnings, config, *, paid_field="amount", company=None) -> dict:
@@ -32,9 +32,11 @@ def compute_employer_contributions(earnings, config, *, paid_field="amount", com
 def apply_regional_ctc_components(assignment, rows_by_type, data) -> None:
 	"""Regional CTC hook -- without it, CTC understates the employer's cost."""
 	earnings = rows_by_type.get("earnings") or []
+	config = frappe._dict({field: assignment.get(field) for field in CONFIG_FIELDS})
+	config.update(start_date=data.get("start_date"), end_date=data.get("end_date"))
 	# an assignment evaluates a full cycle, so full-cycle wage is the paid wage
 	contributions = compute_employer_contributions(
-		earnings, assignment, paid_field="default_amount", company=assignment.company
+		earnings, config, paid_field="default_amount", company=assignment.company
 	)
 
 	for component, amount in contributions.items():
@@ -50,6 +52,15 @@ def set_slip_employer_contributions(doc) -> None:
 		return
 
 	config = get_slip_ssa_values(doc, list(CONFIG_FIELDS))
+	joining_date, relieving_date = frappe.get_cached_value(
+		"Employee", doc.employee, ["date_of_joining", "relieving_date"]
+	)
+	config.update(
+		start_date=doc.start_date,
+		end_date=doc.end_date,
+		joining_date=joining_date,
+		relieving_date=relieving_date,
+	)
 	amounts = compute_employer_contributions(doc.earnings, config, company=doc.company)
 
 	for component, amount in amounts.items():
