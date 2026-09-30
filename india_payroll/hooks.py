@@ -37,7 +37,7 @@ add_to_workspace_dock = [
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/india_payroll/css/india_payroll.css"
-# app_include_js = "/assets/india_payroll/js/india_payroll.js"
+app_include_js = "india_payroll.bundle.js"
 
 # include js, css files in header of web template
 # web_include_css = "/assets/india_payroll/css/india_payroll.css"
@@ -160,6 +160,7 @@ scheduler_events = {
 			"india_payroll.india_payroll.tds.form16.poll_form16_jobs",
 		],
 	},
+	"daily": ["india_payroll.telemetry.capture_daily_payroll_summary"],
 }
 
 # Testing
@@ -204,10 +205,17 @@ doc_events = {
 			"india_payroll.india_payroll.tds.settings.validate_tds_filing_settings",
 			"india_payroll.india_payroll.tds.settings.clear_token_cache_on_change",
 		],
+		"on_update": "india_payroll.telemetry.on_payroll_settings_update",
 	},
 	"Company": {
 		"validate": "india_payroll.india_payroll.tds.settings.validate_deductor_details",
 	},
+	"Salary Slip": {"on_submit": "india_payroll.telemetry.on_salary_slip_submit"},
+	"TDS Return": {
+		"after_insert": "india_payroll.telemetry.on_tds_return_insert",
+		"on_submit": "india_payroll.telemetry.on_tds_return_submit",
+	},
+	"TDS Challan": {"on_submit": "india_payroll.telemetry.on_tds_challan_submit"},
 }
 #
 # each overriding function accepts a `data` argument;

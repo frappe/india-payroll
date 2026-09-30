@@ -24,6 +24,7 @@ from frappe.utils import flt, get_datetime, now_datetime, time_diff_in_seconds
 from frappe.utils.file_manager import save_file
 from frappe.utils.scheduler import is_scheduler_inactive
 
+from india_payroll import telemetry
 from india_payroll.india_payroll.tds.sandbox_client import SandboxTDSClient
 from india_payroll.india_payroll.tds.sheet_json import (
 	WORKBOOK_24Q,
@@ -144,6 +145,7 @@ def enqueue_step(docname: str, step: str) -> str | None:
 		docname=docname,
 		step=step,
 	)
+	telemetry.on_filing_step_started(doc, step)
 	frappe.msgprint(
 		_("{0} started in the background. The return status will update automatically.").format(
 			STEP_SPECS[step]["label"]
@@ -239,6 +241,7 @@ def skip_validation(docname: str, reason: str) -> None:
 	doc.add_action(STEP_SPECS["validate"]["label"], "skipped", message=note[:500], save=False)
 	doc.set_status(SKIPPED_STATUS, save=False)
 	doc.save(ignore_permissions=True)
+	telemetry.on_validation_skipped(doc)
 
 
 def _check_deductee_pans(doc) -> None:
@@ -309,6 +312,7 @@ def run_step(docname: str, step: str) -> None:
 		doc.add_action(label, "Failed", message=str(e)[:500], save=False)
 		doc.set_status("Failed", save=False)
 		doc.save(ignore_permissions=True)
+		telemetry.on_filing_step_finished(doc, step, "failed")
 		frappe.db.commit()  # nosemgrep: persist the Failed status before the re-raise, which the background job runner would otherwise roll back
 		frappe.log_error(
 			title=f"TDS {label} failed for {docname}",
@@ -456,6 +460,7 @@ def poll_return(docname: str) -> None:
 	if status in FAILURE_STATUSES:
 		_update_action(doc, job["row"], status)
 		_fail(doc, client, step, data)
+		telemetry.on_filing_step_finished(doc, step, "failed")
 		return
 
 	if status in SUCCESS_STATUSES:
@@ -463,6 +468,7 @@ def poll_return(docname: str) -> None:
 		_HANDLE_RESULT[step](doc, client, data)
 		doc.set_status(spec["done"], save=False)
 		doc.save(ignore_permissions=True)
+		telemetry.on_filing_step_finished(doc, step, "succeeded")
 		return
 
 	# Still running, or a status this integration does not recognise. Either way the job is
@@ -487,6 +493,7 @@ def poll_return(docname: str) -> None:
 			save=False,
 		)
 		doc.save(ignore_permissions=True)
+		telemetry.on_filing_step_finished(doc, step, "stalled")
 		return
 
 	if age and age > MAX_JOB_AGE_MINUTES * 60:
@@ -501,6 +508,7 @@ def poll_return(docname: str) -> None:
 			save=False,
 		)
 		doc.save(ignore_permissions=True)
+		telemetry.on_filing_step_finished(doc, step, "timed_out")
 		return
 
 	_update_action(doc, job["row"], status or "polled")
@@ -673,7 +681,7 @@ def _issues_json(content: bytes | None, filename: str | None) -> str:
 	if content:
 		try:
 			parsed = json.loads(content.decode("utf-8", errors="replace"))
-		except (ValueError, AttributeError):
+		except ValueError, AttributeError:
 			parsed = None
 
 		if isinstance(parsed, dict):

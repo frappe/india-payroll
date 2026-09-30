@@ -2,6 +2,7 @@ import frappe
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
 from india_payroll.india_payroll.tax_exemption_setup import setup_tax_exemption_categories
+from india_payroll.telemetry import record_install
 
 INDIA_STATES = [
 	"Andhra Pradesh",
@@ -625,6 +626,8 @@ def after_install():
 
 	# setup employment states
 	execute()
+
+	record_install()
 
 
 def after_migrate():

@@ -8,6 +8,7 @@ import frappe
 from frappe.utils import flt, getdate
 from hrms.payroll.doctype.salary_slip.salary_slip import calculate_tax_by_tax_slab
 
+from india_payroll import telemetry
 from india_payroll.india_payroll.tax_exemption_setup import (
 	EXEMPTION_CATEGORIES,
 	setup_tax_exemption_categories,
@@ -25,6 +26,7 @@ PERIODS_PER_YEAR = {
 
 OLD_REGIME_SLAB = "Old Tax Regime: 2019"
 NEW_REGIME_SLAB = "New Tax Regime: 2025-2026"
+REGIME_BY_SLAB = {OLD_REGIME_SLAB: "old", NEW_REGIME_SLAB: "new"}
 
 SECTION_CAPS = {
 	"80CCD(1B)": 50000,
@@ -294,11 +296,18 @@ def set_tax_regime(employee: str, income_tax_slab: str) -> dict:
 	validate_income_tax_slab(assignment.name, income_tax_slab)
 
 	frappe.db.set_value("Salary Structure Assignment", assignment.name, "income_tax_slab", income_tax_slab)
+	telemetry.on_tax_regime_set(employee, REGIME_BY_SLAB.get(income_tax_slab, "other"))
 	return {"assignment": assignment.name}
 
 
 @frappe.whitelist()
 def notify_employee_to_select_tax_regime(assignment: str) -> dict:
+	result = _notify_employee_to_select_tax_regime(assignment)
+	telemetry.on_tax_regime_reminder(sent=1)
+	return result
+
+
+def _notify_employee_to_select_tax_regime(assignment: str) -> dict:
 	frappe.has_permission("Salary Structure Assignment", "email", throw=True)
 
 	ssa = frappe.db.get_value(
@@ -357,11 +366,12 @@ def notify_employees_to_select_tax_regime(names: str | list[str]) -> dict:
 			skipped += 1
 			continue
 		try:
-			notify_employee_to_select_tax_regime(name)
+			_notify_employee_to_select_tax_regime(name)
 			sent += 1
 		except Exception:
 			skipped += 1
 
+	telemetry.on_tax_regime_reminder(sent=sent, skipped=skipped, bulk=True)
 	frappe.msgprint(
 		frappe._("Notified {0} employee(s). Skipped {1} (submitted or no email).").format(sent, skipped)
 	)
