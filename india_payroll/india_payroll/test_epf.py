@@ -20,7 +20,10 @@ from india_payroll.india_payroll.epf import (
 	EPF_PREVIOUS_WAGE_CEILING,
 	EPF_WAGE_CEILING,
 	VPF_COMPONENT,
+	cap_pf_wage,
 	get_epf_wage_ceiling,
+	get_epf_wage_ceilings,
+	get_eps_wage,
 )
 from india_payroll.install import create_epf_components
 
@@ -72,6 +75,10 @@ _TEST_EMAILS = [
 	"test_epf_revised_at_ceiling@indiapayroll.com",
 	"test_epf_revised_above_ceiling@indiapayroll.com",
 	"test_epf_split_month@indiapayroll.com",
+	"test_epf_relieved_before_revision@indiapayroll.com",
+	"test_epf_relieved_after_revision@indiapayroll.com",
+	"test_epf_between_ceilings@indiapayroll.com",
+	"test_epf_joined_mid_period@indiapayroll.com",
 ]
 
 
@@ -99,6 +106,7 @@ class TestEPF(HRMSTestSuite):
 			emp = frappe.db.get_value("Employee", {"employee_name": email}, "name")
 			if emp:
 				frappe.db.delete("Salary Structure Assignment", {"employee": emp})
+				frappe.db.set_value("Employee", emp, "relieving_date", None)
 
 	def _make_salary_slip(
 		self,
@@ -378,6 +386,190 @@ class TestEPF(HRMSTestSuite):
 		slip.insert()
 
 		self.assertEqual(self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT), 2_360)
+
+	def test_pf_wage_is_capped_under_each_ceiling(self):
+		"""A wage between the two ceilings is capped at 15,000 only for the earlier days."""
+		september = get_epf_wage_ceilings("2026-09-01", "2026-09-30")
+		self.assertEqual(september, [(15_000, 16 / 30), (25_000, 14 / 30)])
+
+		for pf_wage, expected in (
+			(14_000, 14_000),
+			(15_000, 15_000),
+			(20_000, 17_333.33),
+			(25_000, 19_666.67),
+			(30_000, 19_666.67),
+		):
+			with self.subTest(pf_wage=pf_wage):
+				self.assertEqual(cap_pf_wage(pf_wage, september), expected)
+
+		self.assertEqual(cap_pf_wage(20_000, get_epf_wage_ceilings("2026-08-01", "2026-08-31")), 15_000)
+		self.assertEqual(cap_pf_wage(20_000, get_epf_wage_ceilings("2026-10-01", "2026-10-31")), 20_000)
+
+		# Relieved 20 Sept: 16 days capped at 15,000, 4 days at the full 20,000.
+		relieved = get_epf_wage_ceilings("2026-09-01", "2026-09-30", relieving_date="2026-09-20")
+		self.assertEqual(cap_pf_wage(20_000, relieved), 16_000)
+
+		# Joined 7 Sept: capped like the whole period, not 15,000 * 10/24 + 20,000 * 14/24.
+		joined = get_epf_wage_ceilings("2026-09-01", "2026-09-30", joining_date="2026-09-07")
+		self.assertEqual(joined, september)
+		self.assertEqual(cap_pf_wage(20_000, joined), 17_333.33)
+
+	def test_eps_wage_follows_each_ceiling(self):
+		"""EPS is earned only on the days whose ceiling the PF wage does not exceed."""
+		september = get_epf_wage_ceilings("2026-09-01", "2026-09-30")
+
+		for pf_wage, expected in (
+			(14_000, 14_000),
+			(20_000, 9_333.33),
+			(25_000, 11_666.67),
+			(30_000, 0),
+		):
+			with self.subTest(pf_wage=pf_wage):
+				self.assertEqual(get_eps_wage(pf_wage, september), expected)
+
+		self.assertEqual(get_eps_wage(20_000, get_epf_wage_ceilings("2026-08-01", "2026-08-31")), 0)
+		self.assertEqual(get_eps_wage(20_000, get_epf_wage_ceilings("2026-10-01", "2026-10-31")), 20_000)
+
+	@HRMSTestSuite.change_settings(
+		"Payroll Settings",
+		{"enable_epf": 1, "enable_professional_tax": 0, "enable_esic": 0, "enable_lwf": 0},
+	)
+	def test_split_month_wage_between_ceilings(self):
+		"""September 2026, PF wage ₹20,000: 12% of 17,333.33 → ₹2,080, not 12% of 19,666.67."""
+		from india_payroll.india_payroll.report.employee_provident_fund_register.employee_provident_fund_register import (
+			execute,
+		)
+
+		employee, slip = self._make_salary_slip(
+			"test_epf_between_ceilings@indiapayroll.com",
+			"Test EPF Between Ceilings Structure",
+			20_000.0,
+			posting_date="2026-09-01",
+			start_date="2026-09-01",
+			end_date="2026-09-30",
+		)
+		slip.insert()
+		slip.submit()
+
+		self.assertEqual(self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT), 2_080)
+
+		rows = execute(frappe._dict({"company": "_Test Company", "from_year": 2026, "month": "September"}))[1]
+		row = next(r for r in rows if r["employee"] == employee)
+		self.assertEqual(row["epf_wages"], 17_333.33)
+		self.assertEqual(row["edli_wages"], 17_333.33)
+		self.assertEqual(row["eps_wages"], 9_333.33)
+		self.assertEqual(row["eps_contribution"], 777)
+		self.assertEqual(row["employer_epf_diff"], 2_080 - 777)
+
+	@HRMSTestSuite.change_settings(
+		"Payroll Settings",
+		{"enable_epf": 1, "enable_professional_tax": 0, "enable_esic": 0, "enable_lwf": 0},
+	)
+	def test_joined_mid_period_keeps_whole_period_ceiling(self):
+		"""Joined 7 Sept 2026 on ₹36,051: capped at the period's 19,666.67 → ₹2,360, not ₹2,500."""
+		employee = make_employee("test_epf_joined_mid_period@indiapayroll.com", company="_Test Company")
+		frappe.db.set_value("Employee", employee, "date_of_joining", "2026-09-07")
+
+		_, slip = self._make_salary_slip(
+			"test_epf_joined_mid_period@indiapayroll.com",
+			"Test EPF Joined Mid Period Structure",
+			36_051.0,
+			posting_date="2026-09-01",
+			start_date="2026-09-07",
+			end_date="2026-09-30",
+		)
+		slip.start_date = "2026-09-01"
+		slip.insert()
+
+		self.assertLess(slip.payment_days, slip.total_working_days)
+		self.assertEqual(self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT), 2_360)
+
+	def test_wage_ceiling_follows_days_in_service(self):
+		"""Joining or leaving within the period weights the ceiling on the days in service."""
+		september = ("2026-09-01", "2026-09-30")
+
+		for relieving_date, expected in (
+			("2026-09-10", 15_000),
+			("2026-09-16", 15_000),
+			("2026-09-17", 15_588.24),
+			("2026-09-20", 17_000),
+			("2026-09-30", 19_666.67),
+			("2026-12-31", 19_666.67),
+			("2026-08-15", 19_666.67),
+		):
+			with self.subTest(relieving_date=relieving_date):
+				self.assertEqual(get_epf_wage_ceiling(*september, relieving_date=relieving_date), expected)
+
+		# A joiner never gets a larger revised share than the whole period.
+		for joining_date, expected in (
+			("2013-01-01", 19_666.67),
+			("2026-09-01", 19_666.67),
+			("2026-09-07", 19_666.67),
+			("2026-09-10", 19_666.67),
+			("2026-09-17", 19_666.67),
+			("2026-09-20", 19_666.67),
+		):
+			with self.subTest(joining_date=joining_date):
+				self.assertEqual(get_epf_wage_ceiling(*september, joining_date=joining_date), expected)
+
+		# In service 5-20 Sept: 12 days old, 4 days revised.
+		self.assertEqual(
+			get_epf_wage_ceiling(*september, joining_date="2026-09-05", relieving_date="2026-09-20"),
+			17_500,
+		)
+		# In service 10-25 Sept: 9 of 16 days revised, more than the period's 14 of 30.
+		self.assertEqual(
+			get_epf_wage_ceiling(*september, joining_date="2026-09-10", relieving_date="2026-09-25"),
+			19_666.67,
+		)
+
+	@HRMSTestSuite.change_settings(
+		"Payroll Settings",
+		{"enable_epf": 1, "enable_professional_tax": 0, "enable_esic": 0, "enable_lwf": 0},
+	)
+	def test_relieved_before_revision_keeps_previous_ceiling(self):
+		"""Relieved on 10 Sept 2026: every day in service is under ₹15,000 → ₹1,800."""
+		from india_payroll.india_payroll.report.employee_provident_fund_register.employee_provident_fund_register import (
+			execute,
+		)
+
+		employee, slip = self._make_salary_slip(
+			"test_epf_relieved_before_revision@indiapayroll.com",
+			"Test EPF Relieved Before Revision Structure",
+			25_000.0,
+			posting_date="2026-09-01",
+			start_date="2026-09-01",
+			end_date="2026-09-30",
+		)
+		frappe.db.set_value("Employee", employee, "relieving_date", "2026-09-10")
+		slip.insert()
+		slip.submit()
+
+		self.assertEqual(self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT), 1_800)
+
+		rows = execute(frappe._dict({"company": "_Test Company", "from_year": 2026, "month": "September"}))[1]
+		row = next(r for r in rows if r["employee"] == employee)
+		self.assertEqual(row["epf_wages"], 15_000)
+		self.assertEqual(row["edli_wages"], 15_000)
+
+	@HRMSTestSuite.change_settings(
+		"Payroll Settings",
+		{"enable_epf": 1, "enable_professional_tax": 0, "enable_esic": 0, "enable_lwf": 0},
+	)
+	def test_relieved_after_revision_weights_days_in_service(self):
+		"""Relieved on 20 Sept 2026: 16 days at ₹15,000 and 4 at ₹25,000 → 12% of ₹17,000."""
+		employee, slip = self._make_salary_slip(
+			"test_epf_relieved_after_revision@indiapayroll.com",
+			"Test EPF Relieved After Revision Structure",
+			25_000.0,
+			posting_date="2026-09-01",
+			start_date="2026-09-01",
+			end_date="2026-09-30",
+		)
+		frappe.db.set_value("Employee", employee, "relieving_date", "2026-09-20")
+		slip.insert()
+
+		self.assertEqual(self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT), 2_040)
 
 	def test_vpf_amount_mode_prorates_on_lop(self):
 		"""

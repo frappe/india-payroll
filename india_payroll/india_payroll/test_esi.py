@@ -19,7 +19,9 @@ from india_payroll.india_payroll.esi import (
 	ESI_EMPLOYER_COMPONENT,
 	ESI_WAGE_CEILING,
 	ESI_WAGE_CEILING_DISABILITY,
+	esi_wage,
 	get_esi_split,
+	is_esi_wage_component,
 )
 from india_payroll.install import create_esi_components
 
@@ -56,6 +58,32 @@ _ESI_LOP_EARNINGS = [
 	}
 ]
 
+# Basic plus an allowance outside ESI wages: gross 25,000 crosses the ceiling
+# while the ESI wage of 15,000 stays under it.
+_ESI_HRA_COMPONENT = "ESI Test HRA"
+_ESI_BASIC_AND_HRA_EARNINGS = [
+	*_ESI_TEST_EARNINGS,
+	{
+		"salary_component": _ESI_HRA_COMPONENT,
+		"abbr": "ESIHRA",
+		"amount": 10_000,
+		"type": "Earning",
+		"depends_on_payment_days": 0,
+	},
+]
+
+_ESI_FIXED_PAY_COMPONENT = "ESI Test Fixed Pay"
+_ESI_FIXED_PAY_EARNINGS = [
+	{
+		"salary_component": _ESI_FIXED_PAY_COMPONENT,
+		"abbr": "ESIFP",
+		"formula": "base",
+		"type": "Earning",
+		"amount_based_on_formula": 1,
+		"depends_on_payment_days": 0,
+	}
+]
+
 
 class TestESI(HRMSTestSuite):
 	def setUp(self):
@@ -70,6 +98,8 @@ class TestESI(HRMSTestSuite):
 			"test_esi_lop_eligibility@indiapayroll.com",
 			"test_esi_lop_contribution@indiapayroll.com",
 			"test_esi_missing_employer_component@indiapayroll.com",
+			"test_esi_wage_basis@indiapayroll.com",
+			"test_esi_no_wage_component@indiapayroll.com",
 		]
 		create_esi_components()
 		self._ensure_esi_test_components()
@@ -84,6 +114,10 @@ class TestESI(HRMSTestSuite):
 			make_salary_component(_ESI_TEST_EARNINGS, False, ["_Test Company"])
 		if not frappe.db.exists("Salary Component", _ESI_LOP_COMPONENT):
 			make_salary_component(_ESI_LOP_EARNINGS, False, ["_Test Company"])
+		if not frappe.db.exists("Salary Component", _ESI_HRA_COMPONENT):
+			make_salary_component(_ESI_BASIC_AND_HRA_EARNINGS, False, ["_Test Company"])
+		if not frappe.db.exists("Salary Component", _ESI_FIXED_PAY_COMPONENT):
+			make_salary_component(_ESI_FIXED_PAY_EARNINGS, False, ["_Test Company"])
 
 	def _cleanup(self):
 		"""
@@ -107,6 +141,7 @@ class TestESI(HRMSTestSuite):
 		start_date: str = "2026-04-01",
 		end_date: str = "2026-04-30",
 		gender: str = "Male",
+		earnings: list | None = None,
 	):
 		"""
 		Create a salary slip whose gross_pay is exactly `gross_pay`.
@@ -130,7 +165,7 @@ class TestESI(HRMSTestSuite):
 			"Monthly",
 			company="_Test Company",
 			currency="INR",
-			earnings=_ESI_TEST_EARNINGS,
+			earnings=earnings or _ESI_TEST_EARNINGS,
 			deductions=[],
 		)
 
@@ -433,6 +468,81 @@ class TestESI(HRMSTestSuite):
 
 		self.assertAlmostEqual(slip.gross_pay, 10_000, places=2)
 		self.assertAlmostEqual(self._esi_rows(slip)[0].amount, flt(10_000 * EMPLOYEE_ESI_RATE, 2), places=2)
+
+	def test_is_esi_wage_component_heuristic(self):
+		for name in (
+			"Basic",
+			"Basic Salary",
+			"BASIC WAGES",
+			"Basic + DA",
+			"Dearness Allowance",
+			"D.A.",
+			"Retaining Allowance",
+			"Retaining Allowance (RA)",
+			"RA",
+			"R.A.",
+			"ESI Test Basic",
+		):
+			self.assertTrue(is_esi_wage_component(name), f"{name!r} should be ESI wage")
+
+		for name in (
+			"House Rent Allowance",
+			"HRA",
+			"Conveyance Allowance",
+			"Special Allowance",
+			"Overtime",
+			"Retention Bonus",
+			"Arrear",
+			"Fixed Pay",
+			"",
+			None,
+		):
+			self.assertFalse(is_esi_wage_component(name), f"{name!r} should not be ESI wage")
+
+	def test_esi_wage_counts_only_basic_da_ra(self):
+		earnings = [
+			frappe._dict(salary_component="Basic", amount=10_000, default_amount=12_000),
+			frappe._dict(salary_component="Dearness Allowance", amount=2_000, default_amount=2_400),
+			frappe._dict(salary_component="Retaining Allowance", amount=1_000, default_amount=1_200),
+			frappe._dict(salary_component="House Rent Allowance", amount=6_000, default_amount=6_000),
+			frappe._dict(salary_component="Basic", amount=5_000, additional_salary="HR-ADS-0001"),
+			frappe._dict(salary_component="Basic", amount=900, statistical_component=1),
+		]
+
+		self.assertEqual(esi_wage(earnings, "amount"), 13_000)
+		self.assertEqual(esi_wage(earnings, "default_amount"), 15_600)
+
+	@HRMSTestSuite.change_settings("Payroll Settings", {"enable_esic": 1})
+	def test_esi_levied_on_wage_components_not_gross(self):
+		"""Basic 15,000 + HRA 10,000: gross crosses the ceiling, the ESI wage does not."""
+		_, salary_slip = self._make_salary_slip(
+			"test_esi_wage_basis@indiapayroll.com",
+			"Test ESI Wage Basis Structure",
+			15_000,
+			earnings=_ESI_BASIC_AND_HRA_EARNINGS,
+		)
+		salary_slip.insert()
+
+		self.assertAlmostEqual(salary_slip.gross_pay, 25_000, places=2)
+		self.assertAlmostEqual(
+			self._esi_rows(salary_slip)[0].amount, flt(15_000 * EMPLOYEE_ESI_RATE, 2), places=2
+		)
+		self.assertAlmostEqual(
+			self._employer_esi_rows(salary_slip)[0].amount, flt(15_000 * EMPLOYER_ESI_RATE, 2), places=2
+		)
+
+	@HRMSTestSuite.change_settings("Payroll Settings", {"enable_esic": 1})
+	def test_no_esi_without_a_wage_component(self):
+		_, salary_slip = self._make_salary_slip(
+			"test_esi_no_wage_component@indiapayroll.com",
+			"Test ESI No Wage Component Structure",
+			15_000,
+			earnings=_ESI_FIXED_PAY_EARNINGS,
+		)
+		salary_slip.insert()
+
+		self.assertEqual(len(self._esi_rows(salary_slip)), 0)
+		self.assertEqual(len(self._employer_esi_rows(salary_slip)), 0)
 
 	def test_get_esi_split_shares_sum_to_four_percent(self):
 		split = get_esi_split(20_000)
