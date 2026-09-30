@@ -121,10 +121,10 @@ def apply_epf(doc, method=None) -> None:
 	joining_date, relieving_date = frappe.get_cached_value(
 		"Employee", doc.employee, ["date_of_joining", "relieving_date"]
 	)
-	wage_ceiling = get_epf_wage_ceiling(
+	ceilings = get_epf_wage_ceilings(
 		doc.start_date, doc.end_date, joining_date=joining_date, relieving_date=relieving_date
 	)
-	pf_wage_capped = min(pf_wage, wage_ceiling)
+	pf_wage_capped = cap_pf_wage(pf_wage, ceilings)
 	epf_base = pf_wage if contribute_on_actual else pf_wage_capped
 
 	employee_epf = _epfo_round(epf_base * EPF_EMPLOYEE_RATE)
@@ -139,17 +139,18 @@ def apply_epf(doc, method=None) -> None:
 	_apply_epf_components(doc, employee_epf=employee_epf, vpf=vpf)
 
 
-def get_epf_wage_ceiling(start_date, end_date=None, *, joining_date=None, relieving_date=None) -> float:
-	"""Monthly PF wage ceiling for a pay period.
+def get_epf_wage_ceilings(
+	start_date, end_date=None, *, joining_date=None, relieving_date=None
+) -> list[tuple[float, float]]:
+	"""Ceilings in force over a pay period, as (ceiling, share of days) pairs.
 
 	S.O. 5109(E) raised the ceiling from ₹15,000 to ₹25,000 with effect from
-	17 Sept 2026. A period that straddles that date gets a ceiling weighted by
-	calendar days on each side, so September 2026 is capped at
-	15,000 * 16/30 + 25,000 * 14/30 = ₹19,666.67.
+	17 Sept 2026. A period that straddles that date is split by calendar days
+	on each side, so September 2026 is [(15,000, 16/30), (25,000, 14/30)].
 
 	An employee who joined or left within the period is weighted on the days in
 	service only, so one relieved on 10 Sept 2026 stays at ₹15,000 and one
-	relieved on 20 Sept 2026 gets 15,000 * 16/20 + 25,000 * 4/20 = ₹17,000.
+	relieved on 20 Sept 2026 gets [(15,000, 16/20), (25,000, 4/20)].
 	"""
 	start = getdate(start_date)
 	end = getdate(end_date) if end_date else start
@@ -160,17 +161,48 @@ def get_epf_wage_ceiling(start_date, end_date=None, *, joining_date=None, reliev
 		end = getdate(relieving_date)
 
 	if start >= EPF_WAGE_CEILING_REVISED_ON:
-		return EPF_WAGE_CEILING
+		return [(EPF_WAGE_CEILING, 1.0)]
 	if end < EPF_WAGE_CEILING_REVISED_ON:
-		return EPF_PREVIOUS_WAGE_CEILING
+		return [(EPF_PREVIOUS_WAGE_CEILING, 1.0)]
 
 	total_days = date_diff(end, start) + 1
 	revised_days = date_diff(end, EPF_WAGE_CEILING_REVISED_ON) + 1
-	return flt(
-		(EPF_PREVIOUS_WAGE_CEILING * (total_days - revised_days) + EPF_WAGE_CEILING * revised_days)
-		/ total_days,
-		2,
+	return [
+		(EPF_PREVIOUS_WAGE_CEILING, (total_days - revised_days) / total_days),
+		(EPF_WAGE_CEILING, revised_days / total_days),
+	]
+
+
+def get_epf_wage_ceiling(start_date, end_date=None, *, joining_date=None, relieving_date=None) -> float:
+	"""Day-weighted ceiling for a pay period: ₹19,666.67 for September 2026.
+
+	Only meaningful for a wage at or above every ceiling in the period; use
+	``cap_pf_wage`` to cap an actual wage.
+	"""
+	ceilings = get_epf_wage_ceilings(
+		start_date, end_date, joining_date=joining_date, relieving_date=relieving_date
 	)
+	return flt(sum(ceiling * share for ceiling, share in ceilings), 2)
+
+
+def cap_pf_wage(pf_wage, ceilings) -> float:
+	"""Cap the PF wage under each ceiling separately, weighted by days.
+
+	A wage between the two ceilings is capped at ₹15,000 for the earlier days
+	and taken in full for the later ones: ₹20,000 in September 2026 gives
+	15,000 * 16/30 + 20,000 * 14/30 = ₹17,333.33, not min(20,000, 19,666.67).
+	"""
+	return flt(sum(min(flt(pf_wage), ceiling) * share for ceiling, share in ceilings), 2)
+
+
+def get_eps_wage(pf_wage, ceilings) -> float:
+	"""EPS wage for the period.
+
+	Post-1 Sept 2014 rule: a member whose PF wage exceeds the ceiling gets no
+	EPS, applied per ceiling in force, so ₹20,000 in September 2026 earns EPS
+	on the 14 days under the ₹25,000 ceiling only.
+	"""
+	return flt(sum(flt(pf_wage) * share for ceiling, share in ceilings if flt(pf_wage) <= ceiling), 2)
 
 
 # ---------------------------------------------------------------------------
