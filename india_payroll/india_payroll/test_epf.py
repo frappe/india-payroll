@@ -78,6 +78,7 @@ _TEST_EMAILS = [
 	"test_epf_relieved_before_revision@indiapayroll.com",
 	"test_epf_relieved_after_revision@indiapayroll.com",
 	"test_epf_between_ceilings@indiapayroll.com",
+	"test_epf_joined_mid_period@indiapayroll.com",
 ]
 
 
@@ -408,6 +409,11 @@ class TestEPF(HRMSTestSuite):
 		relieved = get_epf_wage_ceilings("2026-09-01", "2026-09-30", relieving_date="2026-09-20")
 		self.assertEqual(cap_pf_wage(20_000, relieved), 16_000)
 
+		# Joined 7 Sept: capped like the whole period, not 15,000 * 10/24 + 20,000 * 14/24.
+		joined = get_epf_wage_ceilings("2026-09-01", "2026-09-30", joining_date="2026-09-07")
+		self.assertEqual(joined, september)
+		self.assertEqual(cap_pf_wage(20_000, joined), 17_333.33)
+
 	def test_eps_wage_follows_each_ceiling(self):
 		"""EPS is earned only on the days whose ceiling the PF wage does not exceed."""
 		september = get_epf_wage_ceilings("2026-09-01", "2026-09-30")
@@ -455,6 +461,29 @@ class TestEPF(HRMSTestSuite):
 		self.assertEqual(row["eps_contribution"], 777)
 		self.assertEqual(row["employer_epf_diff"], 2_080 - 777)
 
+	@HRMSTestSuite.change_settings(
+		"Payroll Settings",
+		{"enable_epf": 1, "enable_professional_tax": 0, "enable_esic": 0, "enable_lwf": 0},
+	)
+	def test_joined_mid_period_keeps_whole_period_ceiling(self):
+		"""Joined 7 Sept 2026 on ₹36,051: capped at the period's 19,666.67 → ₹2,360, not ₹2,500."""
+		employee = make_employee("test_epf_joined_mid_period@indiapayroll.com", company="_Test Company")
+		frappe.db.set_value("Employee", employee, "date_of_joining", "2026-09-07")
+
+		_, slip = self._make_salary_slip(
+			"test_epf_joined_mid_period@indiapayroll.com",
+			"Test EPF Joined Mid Period Structure",
+			36_051.0,
+			posting_date="2026-09-01",
+			start_date="2026-09-07",
+			end_date="2026-09-30",
+		)
+		slip.start_date = "2026-09-01"
+		slip.insert()
+
+		self.assertEqual(slip.payment_days, 24)
+		self.assertEqual(self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT), 2_360)
+
 	def test_wage_ceiling_follows_days_in_service(self):
 		"""Joining or leaving within the period weights the ceiling on the days in service."""
 		september = ("2026-09-01", "2026-09-30")
@@ -471,12 +500,14 @@ class TestEPF(HRMSTestSuite):
 			with self.subTest(relieving_date=relieving_date):
 				self.assertEqual(get_epf_wage_ceiling(*september, relieving_date=relieving_date), expected)
 
+		# A joiner never gets a larger revised share than the whole period.
 		for joining_date, expected in (
 			("2013-01-01", 19_666.67),
 			("2026-09-01", 19_666.67),
-			("2026-09-10", 21_666.67),
-			("2026-09-17", 25_000),
-			("2026-09-20", 25_000),
+			("2026-09-07", 19_666.67),
+			("2026-09-10", 19_666.67),
+			("2026-09-17", 19_666.67),
+			("2026-09-20", 19_666.67),
 		):
 			with self.subTest(joining_date=joining_date):
 				self.assertEqual(get_epf_wage_ceiling(*september, joining_date=joining_date), expected)
@@ -485,6 +516,11 @@ class TestEPF(HRMSTestSuite):
 		self.assertEqual(
 			get_epf_wage_ceiling(*september, joining_date="2026-09-05", relieving_date="2026-09-20"),
 			17_500,
+		)
+		# In service 10-25 Sept: 9 of 16 days revised, more than the period's 14 of 30.
+		self.assertEqual(
+			get_epf_wage_ceiling(*september, joining_date="2026-09-10", relieving_date="2026-09-25"),
+			19_666.67,
 		)
 
 	@HRMSTestSuite.change_settings(
