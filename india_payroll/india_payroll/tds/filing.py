@@ -681,7 +681,7 @@ def _issues_json(content: bytes | None, filename: str | None) -> str:
 	if content:
 		try:
 			parsed = json.loads(content.decode("utf-8", errors="replace"))
-		except ValueError, AttributeError:
+		except (ValueError, AttributeError):
 			parsed = None
 
 		if isinstance(parsed, dict):
