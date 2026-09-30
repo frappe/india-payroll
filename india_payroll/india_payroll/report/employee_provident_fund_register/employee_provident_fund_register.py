@@ -18,7 +18,9 @@ from india_payroll.india_payroll.epf import (
 	EPS_RATE,
 	VPF_COMPONENT,
 	_epfo_round,
-	get_epf_wage_ceiling,
+	cap_pf_wage,
+	get_epf_wage_ceilings,
+	get_eps_wage,
 	is_pf_wage_component,
 )
 from india_payroll.india_payroll.utils import get_effective_ssa_values
@@ -222,19 +224,15 @@ def get_data(filters):
 		vpf = flt(totals.get(VPF_COMPONENT))
 
 		contribute_on_actual = bool(s.get("contribute_on_actual_pf_wage"))
-		wage_ceiling = get_epf_wage_ceiling(
+		ceilings = get_epf_wage_ceilings(
 			s.start_date, s.end_date, joining_date=s.date_of_joining, relieving_date=s.relieving_date
 		)
-		pf_wage_capped = min(pf_wage, wage_ceiling)
+		pf_wage_capped = cap_pf_wage(pf_wage, ceilings)
 		epf_base = pf_wage if contribute_on_actual else pf_wage_capped
 
 		# Post-1 Sept 2014 EPS rule: members whose PF wage > ceiling get no EPS.
-		if pf_wage > wage_ceiling:
-			eps_wages = 0.0
-			eps_contribution = 0
-		else:
-			eps_wages = pf_wage_capped
-			eps_contribution = _epfo_round(pf_wage_capped * EPS_RATE)
+		eps_wages = get_eps_wage(pf_wage, ceilings)
+		eps_contribution = _epfo_round(eps_wages * EPS_RATE)
 
 		employer_total = _epfo_round(epf_base * EPF_EMPLOYER_RATE)
 		employer_epf_diff = max(0, employer_total - eps_contribution)
