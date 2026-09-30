@@ -144,12 +144,13 @@ def apply_epf(doc, method=None) -> None:
 def get_employer_contributions(earnings, config, *, paid_field="amount", company=None) -> dict:
 	"""Employer EPF, EPS, EDLI and admin charges, keyed by component.
 
-	Uses the same split as the EPF register. Returns zeros rather than
-	omitting them, so a stale row gets cleared.
+	Uses the same split as the EPF register. Returns nothing when EPF does
+	not apply, so the Salary Structure's own rows stand.
 	"""
-	amounts = dict.fromkeys(EPF_EMPLOYER_COMPONENTS, 0.0)
 	if not is_statutory_enabled("epf", company) or not config.get("epf_applicable"):
-		return amounts
+		return {}
+
+	amounts = dict.fromkeys(EPF_EMPLOYER_COMPONENTS, 0.0)
 
 	pf_wage = sum(flt(e.get(paid_field)) for e in earnings if _is_pf_wage_row(e))
 	if pf_wage <= 0:

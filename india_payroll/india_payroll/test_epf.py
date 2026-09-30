@@ -88,6 +88,7 @@ _TEST_EMAILS = [
 	"test_epf_employer_lop@indiapayroll.com",
 	"test_epf_employer_ctc@indiapayroll.com",
 	"test_epf_employer_not_applicable@indiapayroll.com",
+	"test_epf_employer_structure_rows@indiapayroll.com",
 ]
 
 
@@ -951,3 +952,33 @@ class TestEPF(HRMSTestSuite):
 
 		for component in EPF_EMPLOYER_COMPONENTS:
 			self.assertEqual(self._amount(slip, "employer_contributions", component), 0)
+
+	@HRMSTestSuite.change_settings(
+		"Payroll Settings",
+		{"enable_epf": 1, "enable_professional_tax": 0, "enable_esic": 0, "enable_lwf": 0},
+	)
+	def test_structure_employer_rows_kept_when_not_applicable(self):
+		employee = make_employee("test_epf_employer_structure_rows@indiapayroll.com", company="_Test Company")
+		structure = make_salary_structure(
+			"Test EPF Employer Structure Rows Structure",
+			"Monthly",
+			company="_Test Company",
+			currency="INR",
+			earnings=_EPF_TEST_EARNINGS,
+			deductions=[],
+			other_details={
+				"employer_contributions": [
+					{"salary_component": EPF_EMPLOYER_COMPONENT, "abbr": "EREPF", "amount": 1_000}
+				]
+			},
+		)
+		ssa = create_salary_structure_assignment(
+			employee, structure.name, from_date="2026-04-01", company="_Test Company", base=15_000
+		)
+		frappe.db.set_value("Salary Structure Assignment", ssa.name, "epf_applicable", 0)
+
+		slip = make_salary_slip(structure.name, employee=employee, posting_date="2026-04-01")
+		slip.insert()
+
+		self.assertEqual(self._amount(slip, "employer_contributions", EPF_EMPLOYER_COMPONENT), 1_000)
+		self.assertEqual(self._amount(slip, "employer_contributions", EDLI_COMPONENT), 0)
