@@ -11,6 +11,7 @@ const REPORTS = new Set([
 	"Employee Provident Fund Register",
 	"ESIC Register",
 	"LWF Register",
+	"Professional Tax Register",
 	"Provident Fund Deductions",
 	"Professional Tax Deductions",
 ]);

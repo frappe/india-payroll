@@ -49,6 +49,7 @@ SIDEBAR_LINKS = {
 				link("Report", "Employee Provident Fund Register"),
 				link("Report", "ESIC Register"),
 				link("Report", "LWF Register"),
+				link("Report", "Professional Tax Register"),
 				link("Report", "Provident Fund Deductions"),
 				link("Report", "Professional Tax Deductions"),
 			],
