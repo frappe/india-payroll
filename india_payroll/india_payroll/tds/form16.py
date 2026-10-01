@@ -10,6 +10,7 @@ import frappe
 from frappe import _
 from frappe.utils import flt
 
+from india_payroll import telemetry
 from india_payroll.india_payroll.tds.filing import (
 	FAILURE_STATUSES,
 	SUCCESS_STATUSES,
@@ -65,12 +66,16 @@ def create_forms_for_return(return_name: str) -> int:
 		)
 		doc.insert()
 		created += 1
+
+	if created:
+		telemetry.on_form16_created(created)
 	return created
 
 
 # ------------------------------------------------------------------ enqueue
 def enqueue_part_b(docname: str) -> str | None:
 	job = frappe.enqueue(run_part_b, queue="long", timeout=600, enqueue_after_commit=True, docname=docname)
+	telemetry.on_form16_part_requested("B")
 	frappe.msgprint(_("Form 16 Part B generation started."), alert=True)
 	return job.id if job else None
 
@@ -83,6 +88,7 @@ def enqueue_part_a(docname: str) -> str | None:
 	):
 		frappe.throw(_("Part A can only be requested after the linked Q4 return is filed."))
 	job = frappe.enqueue(run_part_a, queue="long", timeout=600, enqueue_after_commit=True, docname=docname)
+	telemetry.on_form16_part_requested("A")
 	frappe.msgprint(_("Form 16 Part A requested from TRACES."), alert=True)
 	return job.id if job else None
 
