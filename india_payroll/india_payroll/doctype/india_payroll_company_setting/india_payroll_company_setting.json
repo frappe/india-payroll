@@ -11,7 +11,12 @@
   "epf_establishment_code",
   "column_break_registrations",
   "professional_tax_registration_number",
-  "lwf_registration_number"
+  "lwf_registration_number",
+  "traces_section",
+  "traces_username",
+  "traces_password",
+  "column_break_traces",
+  "traces_remember_credentials"
  ],
  "fields": [
   {
@@ -62,12 +67,40 @@
    "in_list_view": 1,
    "label": "LWF Registration Number",
    "translatable": 0
+  },
+  {
+   "description": "This company's deductor login on the TRACES portal, used to download Form 16 Part A for its TAN.",
+   "fieldname": "traces_section",
+   "fieldtype": "Section Break",
+   "label": "TRACES (Form 16 Part A)"
+  },
+  {
+   "fieldname": "traces_username",
+   "fieldtype": "Data",
+   "label": "TRACES Username",
+   "translatable": 0
+  },
+  {
+   "fieldname": "traces_password",
+   "fieldtype": "Password",
+   "label": "TRACES Password"
+  },
+  {
+   "fieldname": "column_break_traces",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "description": "Sandbox keeps the TRACES credentials for the duration of a Form 16 job, so job status can be polled without re-sending them.",
+   "fieldname": "traces_remember_credentials",
+   "fieldtype": "Check",
+   "label": "Let Sandbox Remember Credentials"
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-08-27 00:00:00.000000",
+ "modified": "2026-09-28 00:00:00.000000",
  "module": "India Payroll",
  "name": "India Payroll Company Setting",
  "owner": "Administrator",

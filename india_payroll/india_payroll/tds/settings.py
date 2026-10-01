@@ -15,6 +15,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint
 
+from india_payroll.india_payroll.company_settings import COMPANY_SETTINGS_FIELD, MULTI_COMPANY_FIELD
 from india_payroll.india_payroll.tds.validators import is_valid_pan, is_valid_tan
 
 # site_config keys through which Frappe Cloud provisions Sandbox TDS access.
@@ -97,6 +98,41 @@ def get_sandbox_credentials(settings=None) -> dict:
 	}
 
 
+def get_traces_credentials(company: str | None = None, required: bool = True) -> dict:
+	"""TRACES portal credentials for Form 16 Part A.
+
+	TRACES accounts belong to the deductor (one per TAN). A single-company site
+	keeps the login on Payroll Settings; with multi-company payroll enabled it
+	comes from the company's row in the Company Payroll Settings table, so one
+	deductor's login is never sent with another company's TAN. Never provisioned
+	through site config.
+	"""
+	settings = frappe.get_cached_doc("Payroll Settings")
+	source, where = settings, _("Payroll Settings")
+
+	if settings.get(MULTI_COMPANY_FIELD):
+		source = next(
+			(row for row in settings.get(COMPANY_SETTINGS_FIELD) or [] if row.company == company),
+			None,
+		)
+		where = _("the Company Payroll Settings row for {0}").format(company)
+
+	username = (source.get("traces_username") or "").strip() if source else ""
+	password = source.get_password("traces_password", raise_exception=False) if source else None
+
+	if required and not (username and password):
+		frappe.throw(
+			_("Set the TRACES Username and Password in {0} to request Form 16 Part A.").format(where),
+			title=_("TRACES Credentials Missing"),
+		)
+
+	return {
+		"username": username,
+		"password": password,
+		"remember_me": cint(source.get("traces_remember_credentials")) if source else 0,
+	}
+
+
 def conf_sandbox_mode(api_key=None) -> int:
 	"""Which Sandbox environment the cloud-provisioned key belongs to.
 
@@ -116,6 +152,8 @@ def conf_sandbox_mode(api_key=None) -> int:
 
 def validate_tds_filing_settings(doc, method=None):
 	"""Refuse to enable TDS filing without a credential pair to file with."""
+	validate_traces_pairs(doc)
+
 	if not doc.get("enable_tds_filing") or not doc.has_value_changed("enable_tds_filing"):
 		return
 
@@ -143,6 +181,24 @@ def clear_token_cache_on_change(doc, method=None):
 	if any(doc.get(f) != before.get(f) for f in credential_fields):
 		doc.tds_access_token = None
 		doc.tds_token_expiry = None
+
+
+def validate_traces_pairs(doc) -> None:
+	"""A TRACES username without a password (or vice versa) can never log in."""
+	if bool(doc.get("traces_username")) != bool(doc.get("traces_password")):
+		frappe.throw(
+			_("TRACES Username and Password must be set together."),
+			title=_("Incomplete TRACES Credentials"),
+		)
+
+	for row in doc.get(COMPANY_SETTINGS_FIELD) or []:
+		if bool(row.get("traces_username")) != bool(row.get("traces_password")):
+			frappe.throw(
+				_("Row #{0}: TRACES Username and Password must be set together for {1}.").format(
+					row.idx, frappe.bold(row.company)
+				),
+				title=_("Incomplete TRACES Credentials"),
+			)
 
 
 def validate_deductor_details(doc, method=None):
