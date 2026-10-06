@@ -36,13 +36,16 @@ PF_WAGE_COMPONENT_PATTERNS = (
 	r"\bbasic\b",  # Basic, Basic Salary, Basic Pay, Basic Wages, Basic + DA
 	r"\bdearness\b",  # Dearness Allowance, Dearness Pay
 	r"\bda\b",  # DA, Basic + DA
+	r"\bretaining\b",  # Retaining Allowance
+	r"\bra\b",  # RA
 )
 
 _PF_WAGE_COMPONENT_RE = re.compile("|".join(PF_WAGE_COMPONENT_PATTERNS))
 
 
 def is_pf_wage_component(salary_component: str | None) -> bool:
-	"""True when a Salary Component name reads as Basic or Dearness Allowance.
+	"""True when a Salary Component name reads as Basic, Dearness Allowance or
+	Retaining Allowance — the wage heads EPF Act s.6 levies contributions on.
 
 	Heuristic by design: there is no per-component PF flag, so a company that
 	names its basic component something unrecognisable (e.g. "Fixed Pay") will
@@ -67,8 +70,8 @@ def apply_epf(doc, method=None) -> None:
 	"Employer Contribution" components on the Salary Structure and handled
 	by Salary Structure Assignment / CTC — not by this hook.
 
-	Contributions are computed on PF wage — the Basic and Dearness Allowance
-	earnings on the slip only (see ``_compute_pf_wage``) — never on gross pay.
+	Contributions are computed on PF wage — the Basic, Dearness Allowance and
+	Retaining Allowance earnings on the slip only (see ``_compute_pf_wage``) — never on gross pay.
 
 	Gated by a single `epf_applicable` flag on the Salary Structure Assignment.
 	All employees are assumed to be post-1 Sept 2014 EPF members.
@@ -107,9 +110,10 @@ def apply_epf(doc, method=None) -> None:
 		if not _has_pf_wage_component(doc):
 			frappe.msgprint(
 				frappe._(
-					"No Basic or Dearness Allowance earning was found on this Salary Slip, "
-					"so no EPF has been deducted. EPF applies only to Basic and Dearness "
-					"Allowance; rename the component accordingly if it is PF-eligible."
+					"No Basic, Dearness Allowance or Retaining Allowance earning was found on "
+					"this Salary Slip, so no EPF has been deducted. EPF applies only to Basic, "
+					"Dearness Allowance and Retaining Allowance; rename the component "
+					"accordingly if it is PF-eligible."
 				),
 				indicator="orange",
 				alert=True,
@@ -234,7 +238,7 @@ def _required_components_exist() -> bool:
 
 def _is_pf_wage_row(e) -> bool:
 	# Additional Salary earnings (bonuses/arrears) never count, even when the
-	# component reads as Basic/DA.
+	# component reads as Basic/DA/RA.
 	return not e.get("additional_salary") and is_pf_wage_component(e.salary_component)
 
 
