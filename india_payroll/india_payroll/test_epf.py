@@ -29,9 +29,9 @@ from india_payroll.install import create_epf_components
 
 # The earning component used as Basic across all EPF tests. Basic is
 # PF-eligible (its name matches the Basic/DA heuristic); formula `base` keeps
-# gross_pay equal to the SSA base for predictable assertions. Only Basic and
-# Dearness Allowance count towards PF wage — see
-# test_pf_wage_counts_only_basic_and_dearness_allowance.
+# gross_pay equal to the SSA base for predictable assertions. Only Basic,
+# Dearness Allowance and Retaining Allowance count towards PF wage — see
+# test_pf_wage_counts_only_basic_da_and_retaining_allowance.
 _EPF_BASIC_COMPONENT = "EPF Test Basic"
 _EPF_TEST_EARNINGS = [
 	{
@@ -693,10 +693,10 @@ class TestEPF(HRMSTestSuite):
 		)
 		self.assertEqual(self._amount(slip, "deductions", VPF_COMPONENT), _epfo_round(paid_wage * 0.05))
 
-	def test_pf_wage_counts_only_basic_and_dearness_allowance(self):
+	def test_pf_wage_counts_only_basic_da_and_retaining_allowance(self):
 		"""
-		PF wage is an inclusion list: only Basic and Dearness Allowance attract
-		EPF. Every other earning — HRA, conveyance, special allowance — is
+		PF wage is an inclusion list: only Basic, Dearness Allowance and
+		Retaining Allowance attract EPF (EPF Act s.6). Every other earning — HRA, conveyance, special allowance — is
 		ignored, as is anything sourced from an Additional Salary even when the
 		component itself reads as Basic/DA.
 		"""
@@ -707,6 +707,7 @@ class TestEPF(HRMSTestSuite):
 			earnings=[
 				frappe._dict(salary_component="Basic Salary", default_amount=20_000, amount=20_000),
 				frappe._dict(salary_component="Dearness Allowance", default_amount=4_000, amount=4_000),
+				frappe._dict(salary_component="Retaining Allowance", default_amount=1_000, amount=1_000),
 				frappe._dict(salary_component="HRA", default_amount=8_000, amount=8_000),
 				frappe._dict(salary_component="Conveyance Allowance", default_amount=1_600, amount=1_600),
 				frappe._dict(salary_component="Special Allowance", default_amount=9_000, amount=9_000),
@@ -719,11 +720,11 @@ class TestEPF(HRMSTestSuite):
 			],
 		)
 
-		# Basic 20,000 + DA 4,000. Everything else drops out.
-		self.assertEqual(_compute_pf_wage(doc), 24_000)
+		# Basic 20,000 + DA 4,000 + RA 1,000. Everything else drops out.
+		self.assertEqual(_compute_pf_wage(doc), 25_000)
 
 	def test_is_pf_wage_component_heuristic(self):
-		"""The name heuristic recognises Basic/DA spellings and nothing else."""
+		"""The name heuristic recognises Basic/DA/RA spellings and nothing else."""
 		from india_payroll.india_payroll.epf import is_pf_wage_component
 
 		for name in (
@@ -736,6 +737,10 @@ class TestEPF(HRMSTestSuite):
 			"Dearness Allowance",
 			"Dearness Allowance (DA)",
 			"DA",
+			"Retaining Allowance",
+			"Retaining Allowance (RA)",
+			"RA",
+			"R.A.",
 			"EPF Test Basic",
 		):
 			self.assertTrue(is_pf_wage_component(name), f"{name!r} should be PF wage")
@@ -749,6 +754,7 @@ class TestEPF(HRMSTestSuite):
 			"Performance Bonus",
 			"Leave Encashment",
 			"Daily Allowance",
+			"Retention Bonus",
 			"Arrear",
 			"",
 			None,
