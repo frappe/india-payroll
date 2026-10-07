@@ -1,6 +1,13 @@
 import frappe
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
+from frappe.custom.doctype.property_setter.property_setter import make_property_setter
 
+from india_payroll.india_payroll.epf import (
+	EPF_PREVIOUS_WAGE_CEILING,
+	EPF_WAGE_CEILING,
+	EPF_WAGE_CEILING_REVISED_ON,
+)
+from india_payroll.india_payroll.esi import ESI_WAGE_CEILING, ESI_WAGE_CEILING_DISABILITY
 from india_payroll.india_payroll.tax_exemption_setup import setup_tax_exemption_categories
 from india_payroll.sidebar import add_sidebar_links
 from india_payroll.telemetry import record_install
@@ -611,6 +618,70 @@ def get_custom_fields():
 				),
 			},
 		],
+		"Job Offer": [
+			{
+				"fieldname": "india_payroll_epf_section",
+				"label": "Employee Provident Fund",
+				"fieldtype": "Section Break",
+				"insert_after": "gross",
+				"depends_on": "eval:doc.salary_structure",
+			},
+			{
+				"fieldname": "epf_applicable",
+				"label": "EPF Applicable",
+				"fieldtype": "Check",
+				"insert_after": "india_payroll_epf_section",
+				"default": "1",
+				"description": (
+					"Opt this candidate into EPF for the offered CTC. The system "
+					"defers to this flag rather than enforcing a wage-based eligibility rule."
+				),
+			},
+			{
+				"fieldname": "epf_section_coulmn_break",
+				"fieldtype": "Column Break",
+				"insert_after": "epf_applicable",
+			},
+			{
+				"fieldname": "contribute_on_actual_pf_wage",
+				"label": "Contribute on Actual PF Wage",
+				"fieldtype": "Check",
+				"insert_after": "epf_section_coulmn_break",
+				"depends_on": (
+					"eval:doc.epf_applicable && doc.gross > "
+					"((doc.date_of_joining || doc.offer_date || frappe.datetime.get_today()) "
+					f'< "{EPF_WAGE_CEILING_REVISED_ON}" ? {EPF_PREVIOUS_WAGE_CEILING} : {EPF_WAGE_CEILING})'
+				),
+				"description": (
+					"If checked, employee + employer EPF contributions are computed on the "
+					"actual PF wage when it exceeds the EPF wage ceiling in force on the date of "
+					f"joining (₹{EPF_PREVIOUS_WAGE_CEILING:,} before "
+					f"{EPF_WAGE_CEILING_REVISED_ON:%d %b %Y}, ₹{EPF_WAGE_CEILING:,} from then on). "
+					"EPS and EDLI remain capped by law."
+				),
+			},
+			{
+				"fieldname": "india_payroll_esi_section",
+				"label": "Employee State Insurance",
+				"fieldtype": "Section Break",
+				"insert_after": "contribute_on_actual_pf_wage",
+				"depends_on": "eval:doc.salary_structure",
+			},
+			{
+				"fieldname": "is_person_with_disability",
+				"label": "Person with Disability",
+				"fieldtype": "Check",
+				"insert_after": "india_payroll_esi_section",
+				"depends_on": (
+					f"eval:doc.gross > {ESI_WAGE_CEILING} && doc.gross <= {ESI_WAGE_CEILING_DISABILITY}"
+				),
+				"description": (
+					f"ESIC wage ceiling is ₹{ESI_WAGE_CEILING_DISABILITY:,} instead of "
+					f"₹{ESI_WAGE_CEILING:,} for persons with disability, so the employer's "
+					"3.25% share applies to this offer."
+				),
+			},
+		],
 	}
 
 
@@ -618,6 +689,7 @@ def after_install():
 	from india_payroll.patches.v1_0.set_employment_state_from_company_address import execute
 
 	create_custom_fields(get_custom_fields())
+	set_job_offer_field_properties()
 	create_professional_tax_component()
 	create_esi_components()
 	create_lwf_component()
@@ -635,6 +707,11 @@ def after_install():
 def after_migrate():
 	create_custom_fields(get_custom_fields())
 	add_sidebar_links()
+	set_job_offer_field_properties()
+
+
+def set_job_offer_field_properties():
+	make_property_setter("Job Offer", "contribute_on_actual_pf_wage", "show_description_on_click", 1, "Check")
 
 
 def create_professional_tax_component():

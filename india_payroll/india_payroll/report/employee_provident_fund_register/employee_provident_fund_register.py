@@ -14,13 +14,9 @@ from india_payroll.india_payroll.company_settings import (
 )
 from india_payroll.india_payroll.epf import (
 	EPF_EMPLOYEE_COMPONENT,
-	EPF_EMPLOYER_RATE,
-	EPS_RATE,
 	VPF_COMPONENT,
-	_epfo_round,
-	cap_pf_wage,
+	get_employer_epf_split,
 	get_epf_wage_ceilings,
-	get_eps_wage,
 	is_pf_wage_component,
 )
 from india_payroll.india_payroll.utils import get_effective_ssa_values
@@ -223,19 +219,12 @@ def get_data(filters):
 		employee_epf = flt(totals.get(EPF_EMPLOYEE_COMPONENT))
 		vpf = flt(totals.get(VPF_COMPONENT))
 
-		contribute_on_actual = bool(s.get("contribute_on_actual_pf_wage"))
 		ceilings = get_epf_wage_ceilings(
 			s.start_date, s.end_date, joining_date=s.date_of_joining, relieving_date=s.relieving_date
 		)
-		pf_wage_capped = cap_pf_wage(pf_wage, ceilings)
-		epf_base = pf_wage if contribute_on_actual else pf_wage_capped
-
-		# Post-1 Sept 2014 EPS rule: members whose PF wage > ceiling get no EPS.
-		eps_wages = get_eps_wage(pf_wage, ceilings)
-		eps_contribution = _epfo_round(eps_wages * EPS_RATE)
-
-		employer_total = _epfo_round(epf_base * EPF_EMPLOYER_RATE)
-		employer_epf_diff = max(0, employer_total - eps_contribution)
+		split = get_employer_epf_split(
+			pf_wage, ceilings, contribute_on_actual=bool(s.get("contribute_on_actual_pf_wage"))
+		)
 
 		ncp_days = flt(s.get("leave_without_pay")) + flt(s.get("absent_days"))
 		# Fallback when LOP isn't recorded directly: derive from payment vs working days.
@@ -248,13 +237,13 @@ def get_data(filters):
 				"uan_number": s.get("uan_number") or "",
 				"pf_name": s.get("pf_name") or "",
 				"gross_wages": flt(s.gross_pay),
-				"epf_wages": epf_base,
-				"eps_wages": eps_wages,
-				"edli_wages": pf_wage_capped,
+				"epf_wages": split.epf_wages,
+				"eps_wages": split.eps_wages,
+				"edli_wages": split.edli_wages,
 				"employee_epf": employee_epf,
 				"vpf": vpf,
-				"eps_contribution": eps_contribution,
-				"employer_epf_diff": employer_epf_diff,
+				"eps_contribution": split.eps,
+				"employer_epf_diff": split.employer_epf,
 				"ncp_days": ncp_days,
 				"refund_of_advances": 0,
 				"currency": s.currency or "INR",
