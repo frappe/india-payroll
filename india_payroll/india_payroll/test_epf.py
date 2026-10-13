@@ -79,6 +79,9 @@ _TEST_EMAILS = [
 	"test_epf_relieved_after_revision@indiapayroll.com",
 	"test_epf_between_ceilings@indiapayroll.com",
 	"test_epf_joined_mid_period@indiapayroll.com",
+	"test_epf_stored_wages@indiapayroll.com",
+	"test_epf_stored_wages_actual@indiapayroll.com",
+	"test_epf_stored_wages_register@indiapayroll.com",
 ]
 
 
@@ -856,3 +859,86 @@ class TestEPF(HRMSTestSuite):
 		self.assertAlmostEqual(slip.total_deduction, expected_deduction, places=2)
 		self.assertAlmostEqual(slip.gross_pay, gross, places=2)
 		self.assertAlmostEqual(slip.net_pay, gross - expected_deduction, places=2)
+
+	@HRMSTestSuite.change_settings(
+		"Payroll Settings",
+		{"enable_epf": 1, "enable_professional_tax": 0, "enable_esic": 0, "enable_lwf": 0},
+	)
+	def test_pf_wages_stored_on_slip(self):
+		"""The slip records the wages its EPF was computed on: PF wage 20,000
+		above the ₹15,000 ceiling → EPF wages 15,000, no EPS."""
+		_, slip = self._make_salary_slip(
+			"test_epf_stored_wages@indiapayroll.com",
+			"Test EPF Stored Wages Structure",
+			20_000.0,
+		)
+		slip.insert()
+
+		self.assertEqual(slip.pf_wages, 20_000)
+		self.assertEqual(slip.epf_wages, 15_000)
+		self.assertEqual(slip.eps_wages, 0)
+		self.assertEqual(self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT), 1_800)
+
+	@HRMSTestSuite.change_settings(
+		"Payroll Settings",
+		{"enable_epf": 1, "enable_professional_tax": 0, "enable_esic": 0, "enable_lwf": 0},
+	)
+	def test_pf_wages_stored_on_actual_wage(self):
+		"""Contributing on actual PF wage stores the uncapped EPF wages."""
+		employee, slip = self._make_salary_slip(
+			"test_epf_stored_wages_actual@indiapayroll.com",
+			"Test EPF Stored Wages Actual Structure",
+			20_000.0,
+		)
+		self._set_ssa(employee, {"contribute_on_actual_pf_wage": 1})
+		slip.insert()
+
+		self.assertEqual(slip.pf_wages, 20_000)
+		self.assertEqual(slip.epf_wages, 20_000)
+		self.assertEqual(slip.eps_wages, 0)
+
+		# Opting out clears the stored wages along with the deduction.
+		self._set_ssa(employee, {"epf_applicable": 0})
+		slip.save()
+
+		self.assertEqual(slip.pf_wages, 0)
+		self.assertEqual(slip.epf_wages, 0)
+		self.assertEqual(self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT), 0)
+
+	@HRMSTestSuite.change_settings(
+		"Payroll Settings",
+		{"enable_epf": 1, "enable_professional_tax": 0, "enable_esic": 0, "enable_lwf": 0},
+	)
+	def test_register_reports_stored_pf_wages(self):
+		"""The register reports the wages stored on the slip, not a recomputation
+		under the current rules, and recomputes only when none are stored."""
+		from india_payroll.india_payroll.report.employee_provident_fund_register.employee_provident_fund_register import (
+			execute,
+		)
+
+		employee, slip = self._make_salary_slip(
+			"test_epf_stored_wages_register@indiapayroll.com",
+			"Test EPF Stored Wages Register Structure",
+			12_000.0,
+		)
+		slip.insert()
+		slip.submit()
+
+		def register_row():
+			rows = execute(frappe._dict({"company": "_Test Company", "year": 2026, "month": "April"}))[1]
+			return next(r for r in rows if r["employee"] == employee)
+
+		# Stored wages differing from the earnings stand in for a slip computed
+		# under an earlier PF wage rule.
+		frappe.db.set_value(
+			"Salary Slip", slip.name, {"pf_wages": 10_000, "epf_wages": 10_000, "eps_wages": 10_000}
+		)
+		row = register_row()
+		self.assertEqual(row["epf_wages"], 10_000)
+		self.assertEqual(row["eps_wages"], 10_000)
+		self.assertEqual(row["edli_wages"], 10_000)
+
+		frappe.db.set_value("Salary Slip", slip.name, {"pf_wages": 0, "epf_wages": 0, "eps_wages": 0})
+		row = register_row()
+		self.assertEqual(row["epf_wages"], 12_000)
+		self.assertEqual(row["eps_wages"], 12_000)

@@ -75,6 +75,7 @@ def apply_epf(doc, method=None) -> None:
 	"""
 	if not is_statutory_enabled("epf", doc.company):
 		_remove_epf_components(doc)
+		_set_pf_wages(doc)
 		return
 
 	if not doc.salary_structure:
@@ -89,6 +90,7 @@ def apply_epf(doc, method=None) -> None:
 
 	if not ssa.get("epf_applicable"):
 		_remove_epf_components(doc)
+		_set_pf_wages(doc)
 		return
 
 	if not _required_components_exist():
@@ -100,6 +102,7 @@ def apply_epf(doc, method=None) -> None:
 			indicator="orange",
 			alert=True,
 		)
+		_set_pf_wages(doc)
 		return
 
 	pf_wage = _compute_pf_wage(doc)
@@ -115,6 +118,7 @@ def apply_epf(doc, method=None) -> None:
 				alert=True,
 			)
 		_remove_epf_components(doc)
+		_set_pf_wages(doc)
 		return
 
 	contribute_on_actual = bool(ssa.get("contribute_on_actual_pf_wage"))
@@ -124,8 +128,9 @@ def apply_epf(doc, method=None) -> None:
 	ceilings = get_epf_wage_ceilings(
 		doc.start_date, doc.end_date, joining_date=joining_date, relieving_date=relieving_date
 	)
-	pf_wage_capped = cap_pf_wage(pf_wage, ceilings)
-	epf_base = pf_wage if contribute_on_actual else pf_wage_capped
+	wages = get_epf_wages(pf_wage, ceilings, contribute_on_actual=contribute_on_actual)
+	epf_base = wages.epf_wages
+	_set_pf_wages(doc, pf_wage, wages)
 
 	employee_epf = _epfo_round(epf_base * EPF_EMPLOYEE_RATE)
 	vpf = _compute_vpf(
@@ -207,6 +212,20 @@ def cap_pf_wage(pf_wage, ceilings) -> float:
 	15,000 * 16/30 + 20,000 * 14/30 = ₹17,333.33, not min(20,000, 19,666.67).
 	"""
 	return flt(sum(min(flt(pf_wage), ceiling) * share for ceiling, share in ceilings), 2)
+
+
+def get_epf_wages(pf_wage, ceilings, *, contribute_on_actual=False) -> frappe._dict:
+	"""EPF, EPS and EDLI wages for a period's PF wage.
+
+	EPF contributions are levied on the capped wage, or on the actual wage when
+	the employee contributes on it; EPS and EDLI stay capped by law.
+	"""
+	capped = cap_pf_wage(pf_wage, ceilings)
+	return frappe._dict(
+		epf_wages=flt(pf_wage, 2) if contribute_on_actual else capped,
+		eps_wages=get_eps_wage(pf_wage, ceilings),
+		edli_wages=capped,
+	)
 
 
 def get_eps_wage(pf_wage, ceilings) -> float:
@@ -296,6 +315,14 @@ def _apply_epf_components(doc, *, employee_epf: float, vpf: float) -> None:
 			"deductions",
 			{"salary_component": VPF_COMPONENT, "amount": vpf},
 		)
+
+
+def _set_pf_wages(doc, pf_wage=0, wages=None) -> None:
+	"""Record on the slip the wages its EPF was computed on (zero when none applies)."""
+	wages = wages or frappe._dict()
+	doc.pf_wages = flt(pf_wage, 2)
+	doc.epf_wages = flt(wages.get("epf_wages"))
+	doc.eps_wages = flt(wages.get("eps_wages"))
 
 
 def _remove_epf_components(doc) -> None:

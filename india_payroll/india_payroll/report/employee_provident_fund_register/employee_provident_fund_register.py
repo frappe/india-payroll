@@ -18,9 +18,8 @@ from india_payroll.india_payroll.epf import (
 	EPS_RATE,
 	VPF_COMPONENT,
 	_epfo_round,
-	cap_pf_wage,
 	get_epf_wage_ceilings,
-	get_eps_wage,
+	get_epf_wages,
 	is_pf_wage_component,
 )
 from india_payroll.india_payroll.utils import get_effective_ssa_values
@@ -173,6 +172,9 @@ def get_data(filters):
 			SS.absent_days,
 			SS.payment_days,
 			SS.total_working_days,
+			SS.pf_wages,
+			SS.epf_wages,
+			SS.eps_wages,
 			Emp.department,
 			Emp.designation,
 			Emp.date_of_joining,
@@ -219,7 +221,10 @@ def get_data(filters):
 	data = []
 	for s in slips:
 		totals = totals_by_slip.get(s.slip, {})
-		pf_wage = flt(totals.get("pf_wage"))
+		# Wages stored on the slip are what its EPF was computed on; recompute only
+		# for slips that predate them.
+		has_stored_wages = bool(flt(s.pf_wages))
+		pf_wage = flt(s.pf_wages) if has_stored_wages else flt(totals.get("pf_wage"))
 		employee_epf = flt(totals.get(EPF_EMPLOYEE_COMPONENT))
 		vpf = flt(totals.get(VPF_COMPONENT))
 
@@ -227,11 +232,14 @@ def get_data(filters):
 		ceilings = get_epf_wage_ceilings(
 			s.start_date, s.end_date, joining_date=s.date_of_joining, relieving_date=s.relieving_date
 		)
-		pf_wage_capped = cap_pf_wage(pf_wage, ceilings)
-		epf_base = pf_wage if contribute_on_actual else pf_wage_capped
+		wages = get_epf_wages(pf_wage, ceilings, contribute_on_actual=contribute_on_actual)
+		if has_stored_wages:
+			wages.epf_wages = flt(s.epf_wages)
+			wages.eps_wages = flt(s.eps_wages)
 
+		epf_base = wages.epf_wages
 		# Post-1 Sept 2014 EPS rule: members whose PF wage > ceiling get no EPS.
-		eps_wages = get_eps_wage(pf_wage, ceilings)
+		eps_wages = wages.eps_wages
 		eps_contribution = _epfo_round(eps_wages * EPS_RATE)
 
 		employer_total = _epfo_round(epf_base * EPF_EMPLOYER_RATE)
@@ -250,7 +258,7 @@ def get_data(filters):
 				"gross_wages": flt(s.gross_pay),
 				"epf_wages": epf_base,
 				"eps_wages": eps_wages,
-				"edli_wages": pf_wage_capped,
+				"edli_wages": wages.edli_wages,
 				"employee_epf": employee_epf,
 				"vpf": vpf,
 				"eps_contribution": eps_contribution,

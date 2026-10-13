@@ -75,21 +75,27 @@ def apply_esi(doc, method=None) -> None:
 	"""
 	if not is_statutory_enabled("esic", doc.company):
 		_remove_esi_components(doc)
+		_set_esi_wages(doc)
 		return
 
 	if not doc.salary_structure:
 		return
 
 	if not _employee_component_exists():
+		_set_esi_wages(doc)
 		return
 
 	# the PwD flag decides which ceiling applies
 	is_disabled = get_slip_ssa_values(doc, ["is_person_with_disability"]).get("is_person_with_disability")
 
+	wages = esi_wage(doc.earnings, "amount")
+	coverage_wages = esi_wage(doc.earnings, "default_amount")
+	_set_esi_wages(doc, wages, coverage_wages)
+
 	split = get_esi_split(
-		esi_wage(doc.earnings, "amount"),
+		wages,
 		is_person_with_disability=bool(is_disabled),
-		ceiling_gross=esi_wage(doc.earnings, "default_amount"),
+		ceiling_gross=coverage_wages,
 	)
 
 	if not split.covered:
@@ -146,6 +152,15 @@ def _is_esi_wage_row(row) -> bool:
 
 def _has_esi_wage_component(earnings) -> bool:
 	return any(_is_payable(row) and _is_esi_wage_row(row) for row in earnings)
+
+
+def _set_esi_wages(doc, wages=0, coverage_wages=0) -> None:
+	"""Record on the slip the wages ESI was judged and levied on (zero when ESI is off).
+
+	Stored even when the employee is not covered, so the slip shows why.
+	"""
+	doc.esi_wages = flt(wages, 2)
+	doc.esi_coverage_wages = flt(coverage_wages, 2)
 
 
 def _remove_esi_components(doc) -> None:
