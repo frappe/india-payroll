@@ -12,7 +12,7 @@ from frappe.tests.utils import FrappeTestCase
 from frappe.utils import getdate
 
 from india_payroll.boot import set_bootinfo
-from india_payroll.india_payroll.tds import data_assembly, filing, sheet_json
+from india_payroll.india_payroll.tds import data_assembly, filing, form16, sheet_json
 from india_payroll.india_payroll.tds import settings as tds_settings
 from india_payroll.india_payroll.tds.data_assembly import quarter_range_from_start
 from india_payroll.india_payroll.tds.sandbox_client import (
@@ -1302,3 +1302,212 @@ class TestCredentialResolution(FrappeTestCase):
 		set_bootinfo(bootinfo)
 		self.assertTrue(bootinfo["ip_tds_credentials_from_conf"])
 		self.assertEqual(bootinfo["ip_tds_sandbox_mode_from_conf"], 1)
+
+
+class TestForm16PartA(FrappeTestCase):
+	"""The TRACES security challenge built for the Part A download job."""
+
+	def _row(self, challan, pan, deposited=0.0, deducted=0.0):
+		return frappe._dict(challan=challan, pan=pan, tax_deposited=deposited, tax_deducted=deducted)
+
+	def test_challan_with_most_distinct_pan_amounts_wins(self):
+		name, combos = form16._select_challan_combos(
+			[
+				self._row("CH-1", "AAAPA1234A", 100),
+				self._row("CH-2", "AAAPA1234A", 100),
+				self._row("CH-2", "BBBPB1234B", 200),
+			]
+		)
+		self.assertEqual(name, "CH-2")
+		self.assertEqual(combos, [("AAAPA1234A", 100.0), ("BBBPB1234B", 200.0)])
+
+	def test_amounts_accumulate_per_pan_and_rows_cap_at_three(self):
+		rows = [self._row("CH-1", "AAAPA1234A", 100), self._row("CH-1", "AAAPA1234A", 50)]
+		rows += [self._row("CH-1", f"AAAP{c}1234A", 10) for c in "BCDE"]
+		name, combos = form16._select_challan_combos(rows)
+		self.assertEqual(name, "CH-1")
+		self.assertEqual(len(combos), form16.MAX_PAN_AMOUNT_ROWS)
+		self.assertIn(("AAAPA1234A", 150.0), combos)
+
+	def test_placeholder_pans_and_unmatched_rows_are_skipped(self):
+		name, combos = form16._select_challan_combos(
+			[
+				self._row("CH-1", "PANNOTAVBL", 100),
+				self._row(None, "AAAPA1234A", 100),
+				self._row("CH-1", "AAAPA1234A", 0, deducted=75),
+			]
+		)
+		self.assertEqual(name, "CH-1")
+		self.assertEqual(combos, [("AAAPA1234A", 75.0)], "deposited falls back to deducted")
+
+	def test_no_usable_rows_returns_nothing(self):
+		name, combos = form16._select_challan_combos([self._row("CH-1", "PANNOTAVBL", 100)])
+		self.assertIsNone(name)
+		self.assertEqual(combos, [])
+
+	def test_epoch_ms_is_utc_midnight(self):
+		# Matches Sandbox's documented example: 2024-04-01 -> 1711929600000.
+		self.assertEqual(form16._epoch_ms(getdate("2024-04-01")), 1711929600000)
+		self.assertEqual(form16._epoch_ms("2024-04-01"), 1711929600000)
+
+	def test_pdf_for_pan_picks_the_matching_zip_member(self):
+		import io
+		import zipfile
+
+		buffer = io.BytesIO()
+		with zipfile.ZipFile(buffer, "w") as zf:
+			zf.writestr("FORM16_AAAPA1234A.pdf", "%PDF-A")
+			zf.writestr("FORM16_BBBPB1234B.pdf", "%PDF-B")
+		content = buffer.getvalue()
+
+		self.assertEqual(form16._pdf_for_pan(content, "bbbpb1234b"), b"%PDF-B")
+		self.assertIsNone(form16._pdf_for_pan(content, "CCCPC1234C"))
+		self.assertIsNone(form16._pdf_for_pan(b"not a zip", "AAAPA1234A"))
+
+	def test_poll_leaves_part_a_unavailable_when_pan_is_missing_from_archive(self):
+		import io
+		import zipfile
+
+		buffer = io.BytesIO()
+		with zipfile.ZipFile(buffer, "w") as zf:
+			zf.writestr("FORM16_AAAPA1234A.pdf", "%PDF-A")
+		archive = buffer.getvalue()
+
+		doc = frappe._dict(name="F16-X", pan="CCCPC1234C", part_a_job_id="JOB-1", company="Alpha Ltd")
+		doc.get = lambda key, default=None: dict(doc).get(key, default)
+		doc.db_set = lambda *a, **k: doc.setdefault("_db_set", []).append(a or k)
+		doc.add_comment = lambda *a, **k: doc.setdefault("_comments", []).append(a)
+
+		with (
+			patch.object(frappe, "get_doc", return_value=doc),
+			patch.object(form16, "SandboxTDSClient"),
+			patch.object(form16, "_traces_poll_body", return_value={}),
+			patch.object(form16, "_data", return_value={"status": next(iter(form16.SUCCESS_STATUSES))}),
+			patch.object(form16, "_certificate_bytes", return_value=archive),
+			patch.object(form16, "_attach") as attach,
+		):
+			form16._poll_one("F16-X", "a")
+
+		attach.assert_not_called()
+		self.assertIn(("part_a_status", "Failed"), doc["_db_set"])
+		self.assertTrue(doc["_comments"], "the employee is told why Part A is unavailable")
+
+	def test_part_a_sibling_lookup_row_locks_the_tan_and_year(self):
+		doc = frappe._dict(name="F16-SELF", tan="ABCD12345E", financial_year="2026-2027")
+		rows = [
+			frappe._dict(name="F16-SELF", part_a_job_id="JOB-SELF", part_a_status="Requested"),
+			frappe._dict(name="F16-FAILED", part_a_job_id="JOB-OLD", part_a_status="Failed"),
+			frappe._dict(name="F16-PENDING", part_a_job_id=None, part_a_status="Pending"),
+			frappe._dict(
+				name="F16-LIVE", part_a_job_id="JOB-1", traces_request_id="REQ-1", part_a_status="Requested"
+			),
+		]
+		with patch.object(frappe.db, "get_values", return_value=rows) as get_values:
+			sibling = form16._lock_and_find_sibling(doc)
+
+		self.assertEqual(sibling.name, "F16-LIVE")
+		_, kwargs = get_values.call_args
+		self.assertTrue(kwargs["for_update"], "concurrent jobs must block on the same rows")
+		self.assertEqual(get_values.call_args[0][1], {"tan": "ABCD12345E", "financial_year": "2026-2027"})
+
+	def test_part_a_job_does_not_commit_midway(self):
+		doc = frappe._dict(name="F16-X", tan="ABCD12345E", financial_year="2026-2027")
+		with (
+			patch.object(form16, "_submit_part_a") as submitted,
+			patch.object(frappe, "get_doc", return_value=doc),
+			patch.object(frappe.db, "commit") as commit,
+		):
+			form16.run_part_a("F16-X")
+
+		submitted.assert_called_once_with(doc)
+		commit.assert_not_called()
+
+	def test_form16_artifact_never_attaches_another_employees_pdf(self):
+		import io
+		import zipfile
+
+		buffer = io.BytesIO()
+		with zipfile.ZipFile(buffer, "w") as zf:
+			zf.writestr("FORM16_AAAPA1234A.pdf", "%PDF-A")
+			zf.writestr("FORM16_BBBPB1234B.pdf", "%PDF-B")
+		content = buffer.getvalue()
+
+		self.assertEqual(
+			form16._form16_artifact(content, "F16-X", "a", "BBBPB1234B"), ("F16-X-part-A.pdf", b"%PDF-B")
+		)
+		# PAN given but absent from the archive: neither another employee's PDF nor the
+		# whole multi-employee archive is attached.
+		self.assertIsNone(form16._form16_artifact(content, "F16-X", "a", "CCCPC1234C"))
+		# Without a PAN there is nothing to match on, so the first PDF is still used.
+		self.assertEqual(
+			form16._form16_artifact(content, "F16-X", "a", None), ("F16-X-part-A.pdf", b"%PDF-A")
+		)
+		# Part B is per employee: its PDF is attached even when the filename lacks the PAN.
+		buffer = io.BytesIO()
+		with zipfile.ZipFile(buffer, "w") as zf:
+			zf.writestr("form16_part_b_report.pdf", "%PDF-REPORT")
+		report = buffer.getvalue()
+		self.assertEqual(
+			form16._form16_artifact(report, "F16-X", "b", "CCCPC1234C"), ("F16-X-part-B.pdf", b"%PDF-REPORT")
+		)
+
+	def _with_password(self, **values):
+		"""A stand-in for Payroll Settings or one of its company rows."""
+		doc = frappe._dict(values)
+		doc.get_password = lambda fieldname, raise_exception=True: values.get(fieldname)
+		return doc
+
+	def test_traces_username_and_password_must_come_together(self):
+		settings = frappe._dict(traces_username="deductor", traces_password=None)
+		self.assertRaises(frappe.ValidationError, tds_settings.validate_traces_pairs, settings)
+
+		row = frappe._dict(idx=1, company="Alpha Ltd", traces_username="alpha", traces_password=None)
+		settings = frappe._dict(enable_multi_company_payroll=1, company_payroll_settings=[row])
+		self.assertRaises(frappe.ValidationError, tds_settings.validate_traces_pairs, settings)
+
+	def test_missing_traces_credentials_are_refused_when_required(self):
+		settings = self._with_password(traces_username="deductor")
+		with patch.object(frappe, "get_cached_doc", return_value=settings):
+			self.assertRaises(frappe.ValidationError, tds_settings.get_traces_credentials, "Alpha Ltd")
+
+			credentials = tds_settings.get_traces_credentials("Alpha Ltd", required=False)
+		self.assertEqual(credentials["username"], "deductor")
+		self.assertIsNone(credentials["password"])
+
+	def test_single_company_site_uses_the_payroll_settings_login_for_any_company(self):
+		settings = self._with_password(
+			traces_username="deductor", traces_password="secret", traces_remember_credentials=1
+		)
+		with patch.object(frappe, "get_cached_doc", return_value=settings):
+			credentials = tds_settings.get_traces_credentials("Alpha Ltd")
+		self.assertEqual(credentials, {"username": "deductor", "password": "secret", "remember_me": 1})
+
+	def test_multi_company_site_uses_each_companys_own_login(self):
+		settings = self._with_password(
+			enable_multi_company_payroll=1,
+			traces_username="stale-global",
+			traces_password="stale-global",
+			company_payroll_settings=[
+				self._with_password(company="Alpha Ltd", traces_username="alpha", traces_password="a-secret"),
+				self._with_password(
+					company="Beta Ltd",
+					traces_username="beta",
+					traces_password="b-secret",
+					traces_remember_credentials=1,
+				),
+			],
+		)
+		with patch.object(frappe, "get_cached_doc", return_value=settings):
+			alpha = form16._traces_poll_body(frappe._dict(company="Alpha Ltd", tan="ALPA12345A"))
+			beta = form16._traces_poll_body(frappe._dict(company="Beta Ltd", tan="BETA12345B"))
+			# A company without a row must not fall back to the global login.
+			self.assertRaises(frappe.ValidationError, tds_settings.get_traces_credentials, "Gamma Ltd")
+			gamma = tds_settings.get_traces_credentials("Gamma Ltd", required=False)
+
+		self.assertEqual(
+			(alpha["username"], alpha["password"], alpha["tan"]), ("alpha", "a-secret", "ALPA12345A")
+		)
+		self.assertEqual(
+			(beta["username"], beta["password"], beta["tan"]), ("beta", "b-secret", "BETA12345B")
+		)
+		self.assertEqual(gamma, {"username": "", "password": None, "remember_me": 0})
