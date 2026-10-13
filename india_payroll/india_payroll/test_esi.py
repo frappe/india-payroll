@@ -100,6 +100,9 @@ class TestESI(HRMSTestSuite):
 			"test_esi_missing_employer_component@indiapayroll.com",
 			"test_esi_wage_basis@indiapayroll.com",
 			"test_esi_no_wage_component@indiapayroll.com",
+			"test_esi_stored_wages@indiapayroll.com",
+			"test_esi_stored_wages_exempt@indiapayroll.com",
+			"test_esi_stored_wages_register@indiapayroll.com",
 		]
 		create_esi_components()
 		self._ensure_esi_test_components()
@@ -581,3 +584,58 @@ class TestESI(HRMSTestSuite):
 		self.assertTrue(split.covered)
 		self.assertAlmostEqual(split.employee, 75.0, places=2)
 		self.assertAlmostEqual(split.employer, 325.0, places=2)
+
+	@HRMSTestSuite.change_settings("Payroll Settings", {"enable_esic": 1})
+	def test_esi_wages_stored_on_slip(self):
+		"""Basic 15,000 + HRA 10,000: the slip records ESI wages of 15,000."""
+		_, salary_slip = self._make_salary_slip(
+			"test_esi_stored_wages@indiapayroll.com",
+			"Test ESI Stored Wages Structure",
+			15_000,
+			earnings=_ESI_BASIC_AND_HRA_EARNINGS,
+		)
+		salary_slip.insert()
+
+		self.assertEqual(salary_slip.esi_wages, 15_000)
+		self.assertEqual(salary_slip.esi_coverage_wages, 15_000)
+
+	@HRMSTestSuite.change_settings("Payroll Settings", {"enable_esic": 1})
+	def test_esi_wages_stored_when_not_covered(self):
+		"""Above the ceiling the wages are still stored, so the slip shows why no ESI."""
+		_, salary_slip = self._make_salary_slip(
+			"test_esi_stored_wages_exempt@indiapayroll.com",
+			"Test ESI Stored Wages Exempt Structure",
+			ESI_WAGE_CEILING + 1_000,
+		)
+		salary_slip.insert()
+
+		self.assertEqual(self._esi_rows(salary_slip), [])
+		self.assertEqual(salary_slip.esi_coverage_wages, ESI_WAGE_CEILING + 1_000)
+
+	@HRMSTestSuite.change_settings("Payroll Settings", {"enable_esic": 1})
+	def test_register_reports_stored_esi_wages(self):
+		"""The ESIC Register reports the wages stored on the slip."""
+		from india_payroll.india_payroll.report.esic_register.esic_register import execute
+
+		employee, salary_slip = self._make_salary_slip(
+			"test_esi_stored_wages_register@indiapayroll.com",
+			"Test ESI Stored Wages Register Structure",
+			15_000,
+		)
+		salary_slip.insert()
+		salary_slip.submit()
+
+		def register_row():
+			rows = execute(frappe._dict({"company": "_Test Company", "year": 2026, "month": "April"}))[1]
+			return next(r for r in rows if r["employee"] == employee)
+
+		# Stored wages differing from the earnings stand in for an earlier rule.
+		frappe.db.set_value(
+			"Salary Slip", salary_slip.name, {"esi_wages": 12_000, "esi_coverage_wages": 12_000}
+		)
+		row = register_row()
+		self.assertEqual(row["gross_wages"], 12_000)
+		self.assertAlmostEqual(row["employee_esi"], flt(12_000 * EMPLOYEE_ESI_RATE, 2), places=2)
+
+		frappe.db.set_value("Salary Slip", salary_slip.name, {"esi_wages": 0, "esi_coverage_wages": 0})
+		self.assertEqual(register_row()["gross_wages"], 15_000)

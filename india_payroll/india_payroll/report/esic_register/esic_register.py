@@ -127,6 +127,8 @@ def get_data(filters):
 			SS.salary_structure,
 			SS.start_date,
 			SS.currency,
+			SS.esi_wages,
+			SS.esi_coverage_wages,
 			Emp.department,
 			Emp.designation,
 		)
@@ -159,9 +161,13 @@ def get_data(filters):
 		)
 		is_pwd = bool(ssa.get("is_person_with_disability"))
 
-		# mirrors esi.apply_esi: coverage on the full-cycle wage, contribution on the paid wage
-		wages = esi_wage(earnings, "amount")
-		full_wages = esi_wage(earnings, "default_amount")
+		# Wages stored on the slip are what its ESI was computed on; otherwise mirror
+		# esi.apply_esi: coverage on the full-cycle wage, contribution on the paid wage
+		if flt(row.esi_coverage_wages):
+			wages, full_wages = flt(row.esi_wages), flt(row.esi_coverage_wages)
+		else:
+			wages = esi_wage(earnings, "amount")
+			full_wages = esi_wage(earnings, "default_amount")
 		split = get_esi_split(wages, is_person_with_disability=is_pwd, ceiling_gross=full_wages)
 
 		if full_wages > split.ceiling:

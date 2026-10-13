@@ -611,6 +611,83 @@ def get_custom_fields():
 				),
 			},
 		],
+		# Wages the statutory deductions were computed on, stored so the slip
+		# shows them and the registers report the wage actually used.
+		"Salary Slip": [
+			{
+				"fieldname": "india_payroll_statutory_wages_section",
+				"label": "Statutory Wages",
+				"fieldtype": "Section Break",
+				"insert_after": "employer_contributions",
+				"depends_on": "eval:doc.pf_wages || doc.esi_coverage_wages",
+			},
+			{
+				"fieldname": "pf_wages",
+				"label": "PF Wages",
+				"fieldtype": "Currency",
+				"options": "currency",
+				"insert_after": "india_payroll_statutory_wages_section",
+				"read_only": 1,
+				"no_copy": 1,
+				"depends_on": "eval:doc.pf_wages",
+				"description": "Basic and Dearness Allowance earnings paid in this period.",
+			},
+			{
+				"fieldname": "epf_wages",
+				"label": "EPF Wages",
+				"fieldtype": "Currency",
+				"options": "currency",
+				"insert_after": "pf_wages",
+				"read_only": 1,
+				"no_copy": 1,
+				"depends_on": "eval:doc.pf_wages",
+				"description": (
+					"PF wages capped at the statutory ceiling, or in full when contributing on "
+					"actual PF wage. The 12% EPF contributions are calculated on this."
+				),
+			},
+			{
+				"fieldname": "eps_wages",
+				"label": "EPS Wages",
+				"fieldtype": "Currency",
+				"options": "currency",
+				"insert_after": "epf_wages",
+				"read_only": 1,
+				"no_copy": 1,
+				"depends_on": "eval:doc.pf_wages",
+				"description": "Wages the employer's 8.33% pension contribution is calculated on.",
+			},
+			{
+				"fieldname": "india_payroll_statutory_wages_cb",
+				"fieldtype": "Column Break",
+				"insert_after": "eps_wages",
+			},
+			{
+				"fieldname": "esi_wages",
+				"label": "ESI Wages",
+				"fieldtype": "Currency",
+				"options": "currency",
+				"insert_after": "india_payroll_statutory_wages_cb",
+				"read_only": 1,
+				"no_copy": 1,
+				"depends_on": "eval:doc.esi_coverage_wages",
+				"description": (
+					"Basic, Dearness Allowance and Retaining Allowance earnings paid in this "
+					"period. ESI contributions are calculated on this."
+				),
+			},
+			{
+				"fieldname": "esi_coverage_wages",
+				"label": "ESI Coverage Wages",
+				"fieldtype": "Currency",
+				"options": "currency",
+				"insert_after": "esi_wages",
+				"read_only": 1,
+				"no_copy": 1,
+				"depends_on": "eval:doc.esi_coverage_wages",
+				"description": "Full-month ESI wages, checked against the ESI wage ceiling.",
+			},
+		],
 	}
 
 
