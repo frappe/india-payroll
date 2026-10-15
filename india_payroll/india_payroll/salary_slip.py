@@ -13,4 +13,7 @@ def apply_regional_deductions(doc) -> None:
 	apply_esi(doc)
 	apply_lwf(doc)
 	apply_epf(doc)
+
+
+def apply_regional_employer_contributions(doc) -> None:
 	set_slip_employer_contributions(doc)
