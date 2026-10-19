@@ -38,6 +38,12 @@ class TDSChallan(Document):
 		surcharge_amount: DF.Currency
 		tan: DF.Data | None
 		tds_amount: DF.Currency
+		traces_amount: DF.Currency
+		traces_available_amount: DF.Currency
+		traces_checked_on: DF.Datetime | None
+		traces_cin: DF.Data | None
+		traces_claimed_amount: DF.Currency
+		traces_status: DF.Data | None
 	# end: auto-generated types
 
 	def validate(self) -> None:
@@ -90,6 +96,35 @@ class TDSChallan(Document):
 					self.deposit_amount, breakup
 				)
 			)
+
+	@frappe.whitelist()
+	def check_on_traces(self) -> dict:
+		from india_payroll.india_payroll.tds.challans import (
+			TracesCredentialsRequired,
+			fetch_challan,
+			traces_values,
+		)
+		from india_payroll.india_payroll.tds.sandbox_client import SandboxTDSClient
+
+		frappe.has_permission(self.doctype, "write", throw=True)
+		try:
+			challan = fetch_challan(
+				SandboxTDSClient(),
+				self.tan,
+				self.bsr_code,
+				self.challan_serial_no,
+				self.challan_date,
+				reference_doctype=self.doctype,
+				reference_name=self.name,
+			)
+		except TracesCredentialsRequired as e:
+			return {"credentials_required": True, "message": str(e)}
+
+		self.db_set(traces_values(challan))
+		return {"status": self.traces_status, "amount_matches": self.traces_amount_matches()}
+
+	def traces_amount_matches(self) -> bool:
+		return abs(flt(self.traces_amount) - flt(self.deposit_amount)) <= 1.0
 
 
 def deduction_month_from_date(challan_date) -> str:

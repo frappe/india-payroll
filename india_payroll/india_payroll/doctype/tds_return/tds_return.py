@@ -272,6 +272,93 @@ class TDSReturn(Document):
 		return self.csi_file
 
 	@frappe.whitelist()
+	def check_challans_on_traces(self) -> dict:
+		"""Match the period's challans against TRACES, and list TRACES challans not yet recorded."""
+		from india_payroll.india_payroll.doctype.tds_challan.tds_challan import get_challans_for_period
+		from india_payroll.india_payroll.tds.challans import (
+			TracesCredentialsRequired,
+			challan_key,
+			recorded_challan_keys,
+			summarize,
+			traces_key,
+			traces_values,
+		)
+
+		frappe.has_permission("TDS Challan", "write", throw=True)
+		try:
+			found = {traces_key(c): c for c in self._search_traces_challans()}
+		except TracesCredentialsRequired as e:
+			return {"credentials_required": True, "message": str(e)}
+
+		recorded = []
+		for challan in get_challans_for_period(self.company, self.financial_year, self.quarter):
+			key = challan_key(challan.bsr_code, challan.challan_serial_no, challan.challan_date)
+			values = traces_values(found.get(key))
+			frappe.db.set_value("TDS Challan", challan.name, values)
+			recorded.append(
+				{
+					"name": challan.name,
+					"bsr_code": challan.bsr_code,
+					"challan_serial": challan.challan_serial_no,
+					"deposit_date": challan.challan_date,
+					"amount": flt(challan.deposit_amount),
+					"traces_status": values["traces_status"],
+					"traces_amount": values["traces_amount"],
+				}
+			)
+
+		known = recorded_challan_keys(self.company)
+		unrecorded = [summarize(c) for key, c in found.items() if key not in known]
+		return {"recorded": recorded, "unrecorded": unrecorded}
+
+	@frappe.whitelist()
+	def import_traces_challans(self, challans: list | str) -> list[str]:
+		"""Create draft TDS Challans for TRACES challans, picked by BSR code, serial and date."""
+		from india_payroll.india_payroll.tds.challans import (
+			challan_key,
+			new_challan_values,
+			recorded_challan_keys,
+			traces_key,
+		)
+
+		frappe.has_permission("TDS Challan", "create", throw=True)
+		if isinstance(challans, str):
+			challans = frappe.parse_json(challans)
+		wanted = {challan_key(c["bsr_code"], c["challan_serial"], c["deposit_date"]) for c in challans}
+		wanted -= recorded_challan_keys(self.company)
+
+		created = []
+		for challan in self._search_traces_challans():
+			if traces_key(challan) not in wanted:
+				continue
+			doc = frappe.new_doc("TDS Challan")
+			doc.update(
+				{
+					"company": self.company,
+					"financial_year": self.financial_year,
+					"quarter": self.quarter,
+					**new_challan_values(challan),
+				}
+			)
+			doc.insert()
+			created.append(doc.name)
+		return created
+
+	def _search_traces_challans(self) -> list[dict]:
+		from india_payroll.india_payroll.tds.challans import get_search_range, search_challans
+		from india_payroll.india_payroll.tds.sandbox_client import SandboxTDSClient
+
+		start, end = get_search_range(self.company, self.financial_year, self.quarter)
+		return search_challans(
+			SandboxTDSClient(),
+			self.tan,
+			start,
+			end,
+			reference_doctype=self.doctype,
+			reference_name=self.name,
+		)
+
+	@frappe.whitelist()
 	def skip_validation(self, reason: str) -> None:
 		from india_payroll.india_payroll.tds.filing import skip_validation
 

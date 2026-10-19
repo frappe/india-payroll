@@ -31,6 +31,14 @@
   "interest",
   "fee",
   "others",
+  "traces_section",
+  "traces_status",
+  "traces_cin",
+  "traces_checked_on",
+  "column_break_traces",
+  "traces_amount",
+  "traces_claimed_amount",
+  "traces_available_amount",
   "amendment_section",
   "amended_from"
  ],
@@ -209,12 +217,69 @@
    "fieldtype": "Select",
    "label": "Deduction Month",
    "options": "\nApril\nMay\nJune\nJuly\nAugust\nSeptember\nOctober\nNovember\nDecember\nJanuary\nFebruary\nMarch"
+  },
+  {
+   "collapsible": 1,
+   "collapsible_depends_on": "eval:doc.traces_status && doc.traces_status != 'Not Found'",
+   "fieldname": "traces_section",
+   "fieldtype": "Section Break",
+   "label": "TRACES"
+  },
+  {
+   "fieldname": "traces_status",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "TRACES Status",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "traces_cin",
+   "fieldtype": "Data",
+   "label": "CIN",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "traces_checked_on",
+   "fieldtype": "Datetime",
+   "label": "Checked On",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_traces",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "traces_amount",
+   "fieldtype": "Currency",
+   "label": "Amount on TRACES",
+   "no_copy": 1,
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "traces_claimed_amount",
+   "fieldtype": "Currency",
+   "label": "Claimed in Statements",
+   "no_copy": 1,
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "traces_available_amount",
+   "fieldtype": "Currency",
+   "label": "Available Balance",
+   "no_copy": 1,
+   "options": "Company:company:default_currency",
+   "read_only": 1
   }
  ],
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-06-26 00:00:00.000000",
+ "modified": "2026-10-14 12:00:00.000000",
  "module": "India Payroll",
  "name": "TDS Challan",
  "naming_rule": "By \"Naming Series\" field",

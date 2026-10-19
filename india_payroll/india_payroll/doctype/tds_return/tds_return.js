@@ -136,6 +136,12 @@ frappe.ui.form.on("TDS Return", {
 				);
 			}
 
+			frm.add_custom_button(
+				__("Check Challans on TRACES"),
+				() => check_challans_on_traces(frm),
+				__("File Return")
+			);
+
 			if (!VALIDATION_SETTLED.includes(status)) {
 				frm.add_custom_button(
 					__("Skip Validation"),
@@ -222,6 +228,166 @@ function prompt_csi_otp(frm) {
 		__("Fetch CSI File"),
 		__("Send OTP")
 	);
+}
+
+function check_challans_on_traces(frm) {
+	window.india_payroll.tds
+		.with_traces_credentials(frm.doc.company, () =>
+			frm
+				.call({
+					method: "check_challans_on_traces",
+					doc: frm.doc,
+					freeze: true,
+					freeze_message: __("Searching TRACES for this quarter's challans..."),
+				})
+				.then((r) => r.message)
+		)
+		.then((result) => result && show_traces_result(frm, result));
+}
+
+function show_traces_result(frm, result) {
+	const fmt = (value) => format_currency(value, "INR");
+	const recorded_rows = result.recorded
+		.map((c) => {
+			const missing = c.traces_status === "Not Found";
+			const differs = !missing && Math.abs(c.traces_amount - c.amount) > 1;
+			const color = missing ? "red" : differs ? "orange" : "green";
+			return `<tr>
+				<td><a href="/app/tds-challan/${encodeURIComponent(c.name)}">${frappe.utils.escape_html(
+				c.name
+			)}</a></td>
+				<td>${frappe.datetime.str_to_user(c.deposit_date)}</td>
+				<td>${frappe.utils.escape_html(c.bsr_code)} / ${frappe.utils.escape_html(c.challan_serial)}</td>
+				<td class="text-right">${fmt(c.amount)}</td>
+				<td><span class="indicator-pill ${color}">${frappe.utils.escape_html(
+				differs ? __("Amount on TRACES {0}", [fmt(c.traces_amount)]) : c.traces_status
+			)}</span></td>
+			</tr>`;
+		})
+		.join("");
+
+	const fields = [
+		{
+			fieldtype: "HTML",
+			fieldname: "recorded",
+			options: result.recorded.length
+				? `<p class="text-muted">${__("Challans recorded for this quarter")}</p>
+				<table class="table table-bordered table-sm">
+					<thead><tr><th>${__("Challan")}</th><th>${__("Deposit Date")}</th><th>${__(
+						"BSR / Serial"
+				  )}</th><th class="text-right">${__("Amount")}</th><th>${__(
+						"TRACES"
+				  )}</th></tr></thead>
+					<tbody>${recorded_rows}</tbody>
+				</table>`
+				: `<p class="text-muted">${__(
+						"No challans are recorded for this quarter yet."
+				  )}</p>`,
+		},
+	];
+
+	if (result.unrecorded.length) {
+		fields.push(
+			{
+				fieldtype: "HTML",
+				fieldname: "unrecorded_help",
+				options: `<p class="text-muted">${__(
+					"On TRACES but not recorded here. Select the ones that belong to this return to create draft challans. Challans for other forms (such as non-salary TDS) are listed too."
+				)}</p>`,
+			},
+			{
+				fieldtype: "Table",
+				fieldname: "unrecorded",
+				cannot_add_rows: true,
+				cannot_delete_rows: true,
+				in_place_edit: true,
+				data: result.unrecorded,
+				fields: [
+					{
+						fieldname: "deposit_date",
+						fieldtype: "Date",
+						label: __("Deposit Date"),
+						in_list_view: 1,
+						read_only: 1,
+					},
+					{
+						fieldname: "bsr_code",
+						fieldtype: "Data",
+						label: __("BSR Code"),
+						in_list_view: 1,
+						read_only: 1,
+					},
+					{
+						fieldname: "challan_serial",
+						fieldtype: "Data",
+						label: __("Serial"),
+						in_list_view: 1,
+						read_only: 1,
+					},
+					{
+						fieldname: "amount",
+						fieldtype: "Currency",
+						label: __("Amount"),
+						in_list_view: 1,
+						read_only: 1,
+					},
+					{
+						fieldname: "section",
+						fieldtype: "Data",
+						label: __("Section"),
+						in_list_view: 1,
+						read_only: 1,
+					},
+					{ fieldname: "cin", fieldtype: "Data", label: __("CIN"), read_only: 1 },
+					{ fieldname: "status", fieldtype: "Data", label: __("Status"), read_only: 1 },
+					{
+						fieldname: "minor_head",
+						fieldtype: "Data",
+						label: __("Minor Head"),
+						read_only: 1,
+					},
+				],
+			}
+		);
+	}
+
+	const dialog = new frappe.ui.Dialog({
+		title: __("Challans on TRACES"),
+		size: "large",
+		fields,
+		primary_action_label: result.unrecorded.length ? __("Create Draft Challans") : __("Close"),
+		primary_action() {
+			if (!result.unrecorded.length) return dialog.hide();
+
+			const selected = dialog.fields_dict.unrecorded.grid.get_selected_children();
+			if (!selected.length) {
+				frappe.msgprint(__("Select the challans to create."));
+				return;
+			}
+			frm.call({
+				method: "import_traces_challans",
+				doc: frm.doc,
+				args: {
+					challans: selected.map((c) => ({
+						bsr_code: c.bsr_code,
+						challan_serial: c.challan_serial,
+						deposit_date: c.deposit_date,
+					})),
+				},
+				freeze: true,
+			}).then((r) => {
+				dialog.hide();
+				frappe.msgprint(
+					__("Created draft challans {0}. Review and submit them.", [
+						(r.message || [])
+							.map((name) => frappe.utils.get_form_link("TDS Challan", name, true))
+							.join(", "),
+					])
+				);
+			});
+		},
+	});
+	dialog.show();
 }
 
 function prompt_skip_validation(frm) {

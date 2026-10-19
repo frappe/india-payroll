@@ -208,6 +208,214 @@ class TestCsiEndpoints(FrappeTestCase):
 		self.assertEqual(csi.verify_csi_otp(_Client(), "REF-1", "123456"), b"CSI-BYTES")
 
 
+TRACES_CHALLAN = {
+	"tan": "MUMW03366G",
+	"bsr_code": "0510016",
+	"challan_serial": "05445",
+	"paid_date_epoch": 1791311400000,
+	"challan_identification_number": "26100700476950HDFC",
+	"status": "UNCLAIMED",
+	"total_amount": 1928442,
+	"minor_head": "200",
+	"section_code": "92B",
+	"tax_breakdown": [
+		{"section": "392", "tax_amount": 1854271, "surcharge": 0, "cess": 74171, "total_amount": 1928442}
+	],
+	"consumption_details": {"claimed_amount": 0, "available_amount": 1928442},
+}
+
+
+class _TracesClient:
+	def __init__(self, responses=None, error=None):
+		self.calls = []
+		self.responses = list(responses or [])
+		self.error = error
+
+	def request(self, method, endpoint, json_body=None, **kw):
+		from india_payroll.india_payroll.tds.sandbox_client import SandboxAPIError
+
+		self.calls.append((method, endpoint, json_body))
+		if self.error:
+			raise SandboxAPIError(self.error)
+		return self.responses.pop(0) if self.responses else {"code": 200}
+
+
+class TestTracesChallans(FrappeTestCase):
+	def test_paths_match_the_api_reference(self):
+		from india_payroll.india_payroll.tds import challans
+
+		self.assertEqual(challans.TRACES_CREDENTIAL_ENDPOINT, "tds/traces/deductors/credential")
+		self.assertEqual(challans.CHALLAN_ENDPOINT, "tds/compliance/traces/deductors/challans")
+		self.assertEqual(challans.CHALLAN_SEARCH_ENDPOINT, "tds/compliance/traces/deductors/challans/search")
+
+	def test_fetch_sends_particulars_as_padded_strings(self):
+		from india_payroll.india_payroll.tds import challans
+
+		client = _TracesClient([{"code": 200, "data": TRACES_CHALLAN}])
+		result = challans.fetch_challan(client, "MUMW03366G", "510016", "5445", "2026-10-07")
+		self.assertEqual(result["challan_identification_number"], "26100700476950HDFC")
+		method, endpoint, body = client.calls[0]
+		self.assertEqual((method, endpoint), ("POST", challans.CHALLAN_ENDPOINT))
+		self.assertEqual(body["@entity"], "in.co.sandbox.tds.compliance.challan.request")
+		self.assertEqual(body["bsr_code"], "0510016")
+		self.assertEqual(body["challan_serial"], "05445")
+		self.assertEqual(body["paid_date_epoch"], 1791311400000)
+
+	def test_challan_not_found_is_none(self):
+		from india_payroll.india_payroll.tds import challans
+
+		client = _TracesClient(error="Sandbox API error (521): Challan not found")
+		self.assertIsNone(challans.fetch_challan(client, "MUMW03366G", "0510016", "05445", "2026-10-07"))
+
+	def test_missing_or_rejected_password_asks_for_it(self):
+		from india_payroll.india_payroll.tds import challans
+
+		for error in (
+			"Sandbox API error (521): Credentials not found",
+			"Sandbox API error (401): Invalid credentials",
+		):
+			client = _TracesClient(error=error)
+			self.assertRaises(
+				challans.TracesCredentialsRequired,
+				challans.search_challans,
+				client,
+				"MUMW03366G",
+				"2026-07-01",
+				"2026-10-31",
+			)
+
+	def test_other_errors_are_not_swallowed(self):
+		from india_payroll.india_payroll.tds import challans
+		from india_payroll.india_payroll.tds.sandbox_client import SandboxAPIError
+
+		client = _TracesClient(error="Sandbox API error (500): Failed to log in to TRACES")
+		with self.assertRaises(SandboxAPIError) as raised:
+			challans.fetch_challan(client, "MUMW03366G", "0510016", "05445", "2026-10-07")
+		self.assertNotIsInstance(raised.exception, challans.TracesCredentialsRequired)
+
+	def test_search_reads_every_page(self):
+		from india_payroll.india_payroll.tds import challans
+
+		second = dict(TRACES_CHALLAN, challan_serial="09470")
+		client = _TracesClient(
+			[
+				{"code": 200, "data": {"data": [TRACES_CHALLAN], "totalPages": 2, "totalElements": 2}},
+				{"code": 200, "data": {"data": [second], "totalPages": 2, "totalElements": 2}},
+			]
+		)
+		found = challans.search_challans(client, "MUMW03366G", "2026-07-01", "2026-10-31")
+		self.assertEqual([c["challan_serial"] for c in found], ["05445", "09470"])
+		self.assertEqual([call[2]["page_number"] for call in client.calls], [0, 1])
+		self.assertEqual(client.calls[0][2]["@entity"], "in.co.sandbox.tds.compliance.challan.search")
+
+	def test_empty_search_stops_after_one_page(self):
+		from india_payroll.india_payroll.tds import challans
+
+		client = _TracesClient([{"code": 200, "data": {"data": [], "totalPages": 0, "totalElements": 0}}])
+		self.assertEqual(challans.search_challans(client, "MUMW03366G", "2026-07-01", "2026-10-31"), [])
+		self.assertEqual(len(client.calls), 1)
+
+	def test_saving_password_replaces_the_stored_one(self):
+		from india_payroll.india_payroll.tds import challans
+
+		client = _TracesClient()
+		challans.save_traces_credentials(client, "mumw03366g", "secret")
+		self.assertEqual([c[0] for c in client.calls], ["DELETE", "POST"])
+		self.assertEqual(client.calls[1][2]["tan"], "MUMW03366G")
+		self.assertEqual(client.calls[1][2]["password"], "secret")
+
+	def test_paid_date_is_on_the_ist_calendar(self):
+		from india_payroll.india_payroll.tds import challans
+
+		self.assertEqual(challans.paid_date(TRACES_CHALLAN), getdate("2026-10-07"))
+		self.assertEqual(
+			challans.traces_key(TRACES_CHALLAN),
+			challans.challan_key("510016", "5445", "2026-10-07"),
+		)
+
+	def test_traces_values(self):
+		from india_payroll.india_payroll.tds import challans
+
+		found = challans.traces_values(TRACES_CHALLAN)
+		self.assertEqual(found["traces_status"], "UNCLAIMED")
+		self.assertEqual(found["traces_cin"], "26100700476950HDFC")
+		self.assertEqual(found["traces_amount"], 1928442)
+		self.assertEqual(found["traces_available_amount"], 1928442)
+		self.assertEqual(challans.traces_values(None)["traces_status"], challans.NOT_FOUND)
+
+	def test_new_challan_values_sum_the_breakdown(self):
+		from india_payroll.india_payroll.tds import challans
+
+		values = challans.new_challan_values(TRACES_CHALLAN)
+		self.assertEqual(values["challan_date"], getdate("2026-10-07"))
+		self.assertEqual(values["tds_amount"], 1854271)
+		self.assertEqual(values["education_cess"], 74171)
+		self.assertEqual(values["deposit_amount"], 1928442)
+		self.assertEqual(values["minor_head"], "TDS Payable by Taxpayer (200)")
+
+	def test_search_range_reaches_the_month_after_quarter_end(self):
+		from india_payroll.india_payroll.tds import challans
+
+		with (
+			patch.object(
+				challans, "get_csi_date_range", return_value=(getdate("2026-07-01"), getdate("2026-09-30"))
+			),
+			patch.object(
+				data_assembly,
+				"get_quarter_date_range",
+				return_value=(getdate("2026-07-01"), getdate("2026-09-30")),
+			),
+		):
+			self.assertEqual(
+				challans.get_search_range("Co", "2026-2027", "Q2"),
+				(getdate("2026-07-01"), getdate("2026-10-31")),
+			)
+
+	def test_mock_traces_mirrors_recorded_challans(self):
+		from india_payroll.india_payroll.tds import challans
+
+		recorded = frappe._dict(
+			bsr_code="0510016",
+			challan_serial_no="05445",
+			challan_date=getdate("2026-10-07"),
+			deposit_amount=500,
+		)
+		search = {
+			"@entity": challans.CHALLAN_SEARCH_ENTITY,
+			"tan": "MUMW03366G",
+			"from_date_epoch": 1782844200000,
+			"to_date_epoch": 1793385000000,
+		}
+		with patch.object(frappe, "get_all", return_value=[recorded]):
+			found = _mock_response("POST", challans.CHALLAN_SEARCH_ENDPOINT, search)["data"]["data"]
+		self.assertEqual(
+			[challans.traces_key(c) for c in found],
+			[
+				challans.challan_key("0510016", "05445", "2026-10-07"),
+				challans.challan_key("0000000", "99999", "2026-10-31"),
+			],
+		)
+		self.assertEqual(found[0]["total_amount"], 500)
+
+		with patch.object(frappe.db, "get_value", return_value=500):
+			challan = _mock_response(
+				"POST",
+				challans.CHALLAN_ENDPOINT,
+				{
+					"tan": "MUMW03366G",
+					"bsr_code": "0510016",
+					"challan_serial": "05445",
+					"paid_date_epoch": 1791311400000,
+				},
+			)["data"]
+		self.assertEqual(challans.traces_values(challan)["traces_amount"], 500)
+
+	def test_traces_password_masked(self):
+		masked = mask_sensitive({"tan": "MUMW03366G", "password": "secret"})
+		self.assertEqual(masked["password"], "***masked***")
+		self.assertEqual(masked["tan"], "MUMW03366G")
+
+
 class TestSecretMasking(FrappeTestCase):
 	def test_sensitive_values_masked(self):
 		masked = mask_sensitive(
