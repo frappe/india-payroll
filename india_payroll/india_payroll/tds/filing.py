@@ -196,6 +196,14 @@ def _check_precondition(doc, step: str) -> None:
 					"'Challan Status Inquiry' page to the CSI File field."
 				)
 			)
+		if doc.return_type == "Revised" and not doc.conso_file:
+			frappe.throw(
+				_(
+					"Attach the consolidated file of the filed statement before generating the FVU of "
+					"a correction return. Request it on TRACES, download it once it is ready, and "
+					"attach it to the Consolidated File field."
+				)
+			)
 	elif step == "e_file":
 		if not doc.fvu_file:
 			frappe.throw(_("Generate the FVU file before e-filing."))
@@ -359,10 +367,16 @@ def _upload_payloads(doc, client: SandboxTDSClient, step: str) -> dict:
 		return {"json_url": (sheet, "application/json")}
 
 	if step == "generate_fvu":
-		return {
+		payloads = {
 			"txt_file_upload_url": (_read_attachment(doc.txt_file), "text/plain"),
 			"csi_file_upload_url": (_read_attachment(doc.csi_file), "application/octet-stream"),
 		}
+		if doc.return_type == "Revised":
+			payloads["conso_file_upload_url"] = (
+				_read_attachment(doc.conso_file),
+				"application/octet-stream",
+			)
+		return payloads
 
 	if step == "e_file":
 		return {"fvu_upload_file_url": (_read_attachment(doc.fvu_file), "application/zip")}

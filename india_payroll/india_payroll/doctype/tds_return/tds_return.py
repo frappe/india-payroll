@@ -61,6 +61,7 @@ class TDSReturn(Document):
 		acknowledgement_number: DF.Data | None
 		amended_from: DF.Link | None
 		company: DF.Link
+		conso_file: DF.Attach | None
 		csi_file: DF.Attach | None
 		deductees: DF.Table[TDSReturnDeductee]
 		deductor_name: DF.Data | None

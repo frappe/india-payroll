@@ -95,7 +95,10 @@ def _mock_response(method: str, endpoint: str, json_body: dict | None = None) ->
 			"quarter": body.get("quarter"),
 			"form": body.get("form"),
 		}
-		for field in MOCK_UPLOAD_FIELDS.get(kind, ()):
+		fields = MOCK_UPLOAD_FIELDS.get(kind, ())
+		if kind == "fvu" and body.get("filing_type") == "correction":
+			fields = (*fields, "conso_file_upload_url")
+		for field in fields:
 			data[field] = f"{MOCK_SCHEME}upload/{kind}/{field}"
 		return {"code": 200, "data": data}
 

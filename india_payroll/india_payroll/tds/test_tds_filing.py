@@ -554,6 +554,16 @@ class TestJobResponseParsing(FrappeTestCase):
 		self.assertTrue(data.get("txt_file_upload_url"))
 		self.assertTrue(data.get("csi_file_upload_url"))
 
+	def test_correction_fvu_job_also_returns_conso_upload_url(self):
+		regular = _mock_response(
+			"POST", "tds/compliance/fvu/generate", {"tan": "ABCD12345E", "filing_type": "regular"}
+		)["data"]
+		correction = _mock_response(
+			"POST", "tds/compliance/fvu/generate", {"tan": "ABCD12345E", "filing_type": "correction"}
+		)["data"]
+		self.assertNotIn("conso_file_upload_url", regular)
+		self.assertTrue(correction.get("conso_file_upload_url"))
+
 	def test_poll_returns_documented_result_urls(self):
 		cases = {
 			"tds/analytics/potential-notices": "potential_notice_report_url",
@@ -1510,3 +1520,42 @@ class TestCredentialResolution(FrappeTestCase):
 		set_bootinfo(bootinfo)
 		self.assertTrue(bootinfo["ip_tds_credentials_from_conf"])
 		self.assertEqual(bootinfo["ip_tds_sandbox_mode_from_conf"], 1)
+
+
+class TestCorrectionFVU(FrappeTestCase):
+	def _return(self, **kwargs):
+		return frappe._dict(
+			filing_status="TXT Generated",
+			return_type="Revised",
+			txt_file="/x.txt",
+			csi_file="/x.csi",
+			conso_file=None,
+			tan="ABCD12345E",
+			quarter="Q2",
+			form_type="24Q",
+			financial_year="2026-2027",
+			**kwargs,
+		)
+
+	def test_correction_fvu_needs_the_conso_file(self):
+		self.assertRaises(frappe.ValidationError, filing._check_precondition, self._return(), "generate_fvu")
+
+	def test_original_fvu_does_not_need_a_conso_file(self):
+		doc = self._return()
+		doc.return_type = "Original"
+		filing._check_precondition(doc, "generate_fvu")
+
+	def test_correction_fvu_uploads_the_conso_file(self):
+		doc = self._return()
+		doc.conso_file = "/x.conso"
+		with patch.object(filing, "_read_attachment", side_effect=lambda url: url.encode()):
+			payloads = filing._upload_payloads(doc, None, "generate_fvu")
+		self.assertEqual(payloads["conso_file_upload_url"][0], b"/x.conso")
+		self.assertEqual(filing._request_body(doc, "generate_fvu")["filing_type"], "correction")
+
+	def test_original_fvu_uploads_no_conso_file(self):
+		doc = self._return()
+		doc.return_type = "Original"
+		with patch.object(filing, "_read_attachment", side_effect=lambda url: url.encode()):
+			payloads = filing._upload_payloads(doc, None, "generate_fvu")
+		self.assertNotIn("conso_file_upload_url", payloads)
