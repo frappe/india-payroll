@@ -637,8 +637,11 @@ def _result_efile(doc, client: SandboxTDSClient, data: dict) -> None:
 		frappe.log_error(title=f"TDS receipt download failed for {doc.name}")
 		return
 
-	_attach(doc, "receipt_file", f"{doc.name}-receipt{_extension_for(url)}", content)
 	doc.acknowledgement_number = receipt_number_from_pdf(content, doc.token_number)
+	try:
+		_attach(doc, "receipt_file", f"{doc.name}-receipt{_extension_for(url)}", content)
+	except Exception:
+		frappe.log_error(title=f"TDS receipt attach failed for {doc.name}")
 
 
 RECEIPT_NUMBER = re.compile(r"^[A-Z0-9]{8}$")

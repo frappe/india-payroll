@@ -239,7 +239,9 @@ def summarize(challan: dict) -> dict:
 def set_traces_password(company: str, password: str) -> None:
 	from india_payroll.india_payroll.tds.sandbox_client import SandboxTDSClient
 
-	frappe.has_permission("TDS Challan", "write", throw=True)
+	frappe.has_permission(
+		"TDS Challan", "write", doc=frappe.get_doc({"doctype": "TDS Challan", "company": company}), throw=True
+	)
 	tan = frappe.db.get_value("Company", company, "tan")
 	if not tan:
 		frappe.throw(

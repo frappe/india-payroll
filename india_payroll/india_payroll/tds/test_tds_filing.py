@@ -1587,3 +1587,30 @@ class TestEFileReceipt(FrappeTestCase):
 		self.assertEqual(doc.acknowledgement_number, MOCK_RECEIPT_NUMBER)
 		self.assertEqual(attach.call_args[0][1], "receipt_file")
 		self.assertEqual(attach.call_args[0][2], "RET-1-receipt.pdf")
+
+	def test_receipt_attach_failure_does_not_stall_the_filing(self):
+		doc = frappe._dict(name="RET-1", token_number=None, acknowledgement_number=None)
+		data = _mock_response("GET", "tds/compliance/e-file")["data"]
+		with (
+			patch.object(filing, "_attach", side_effect=frappe.ValidationError),
+			patch.object(frappe, "log_error") as log_error,
+		):
+			filing._result_efile(doc, _FakeClient(), data)
+
+		self.assertEqual(doc.token_number, MOCK_TOKEN_NUMBER)
+		self.assertEqual(doc.acknowledgement_number, MOCK_RECEIPT_NUMBER)
+		log_error.assert_called_once()
+
+
+class TestTracesPasswordAccess(FrappeTestCase):
+	def test_password_change_checks_access_to_the_named_company(self):
+		from india_payroll.india_payroll.tds import challans
+
+		with (
+			patch.object(frappe, "has_permission", side_effect=frappe.PermissionError) as has_permission,
+			patch.object(challans, "save_traces_credentials") as save,
+		):
+			self.assertRaises(frappe.PermissionError, challans.set_traces_password, "Other Co", "secret")
+
+		self.assertEqual(has_permission.call_args.kwargs["doc"].company, "Other Co")
+		save.assert_not_called()

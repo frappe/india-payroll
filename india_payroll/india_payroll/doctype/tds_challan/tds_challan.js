@@ -6,6 +6,10 @@ frappe.ui.form.on("TDS Challan", {
 		if (frm.is_new() || frm.doc.docstatus === 2) return;
 
 		frm.add_custom_button(__("Check on TRACES"), () => {
+			if (frm.is_dirty()) {
+				frappe.msgprint(__("Save the challan before checking it on TRACES."));
+				return;
+			}
 			window.india_payroll.tds
 				.with_traces_credentials(frm.doc.company, () =>
 					frm
