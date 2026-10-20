@@ -16,6 +16,7 @@ status. Endpoint paths are overridable via site_config.
 import base64
 import io
 import json
+import re
 import zipfile
 
 import frappe
@@ -622,15 +623,43 @@ def _result_fvu(doc, client: SandboxTDSClient, data: dict) -> None:
 
 
 def _result_efile(doc, client: SandboxTDSClient, data: dict) -> None:
-	receipt = (
-		data.get("receipt_number") or data.get("provisional_receipt_number") or data.get("acknowledgement")
-	)
-	doc.acknowledgement_number = str(receipt) if receipt is not None else None
-	doc.token_number = data.get("token_number") or data.get("token")
+	"""Sandbox's receipt_number is the 15-digit token number; the receipt number is only on the PDF."""
+	token = data.get("receipt_number") or data.get("token_number")
+	doc.token_number = str(token) if token is not None else None
 	doc.filing_date = now_datetime()
 
-	if data.get("receipt_file_url"):
-		_save_report(doc, client, data["receipt_file_url"], f"{doc.name}-receipt")
+	url = data.get("receipt_file_url")
+	if not url:
+		return
+	try:
+		content = client.fetch_file(url)
+	except Exception:
+		frappe.log_error(title=f"TDS receipt download failed for {doc.name}")
+		return
+
+	_attach(doc, "receipt_file", f"{doc.name}-receipt{_extension_for(url)}", content)
+	doc.acknowledgement_number = receipt_number_from_pdf(content, doc.token_number)
+
+
+RECEIPT_NUMBER = re.compile(r"^[A-Z0-9]{8}$")
+
+
+def receipt_number_from_pdf(content: bytes, token_number: str | None) -> str | None:
+	"""The receipt number closes the row that opens with the token number."""
+	from pypdf import PdfReader
+
+	if not token_number:
+		return None
+	try:
+		text = PdfReader(io.BytesIO(content)).pages[0].extract_text()
+	except Exception:
+		return None
+
+	for line in text.splitlines():
+		parts = line.split()
+		if len(parts) > 1 and parts[0] == token_number and RECEIPT_NUMBER.match(parts[-1]):
+			return parts[-1]
+	return None
 
 
 _HANDLE_RESULT = {

@@ -87,6 +87,7 @@
   "acknowledgement_number",
   "column_break_ack",
   "filing_date",
+  "receipt_file",
   "actions_section",
   "filing_actions",
   "amended_from"
@@ -330,15 +331,23 @@
    "label": "Acknowledgement"
   },
   {
+   "description": "15-digit token number printed on the receipt. A correction return quotes it as the previous receipt number.",
    "fieldname": "token_number",
    "fieldtype": "Data",
    "label": "Token Number",
    "read_only": 1
   },
   {
+   "description": "8-character receipt number printed on the receipt, quoted on TDS certificates.",
    "fieldname": "acknowledgement_number",
    "fieldtype": "Data",
    "label": "Provisional Receipt Number",
+   "read_only": 1
+  },
+  {
+   "fieldname": "receipt_file",
+   "fieldtype": "Attach",
+   "label": "Provisional Receipt",
    "read_only": 1
   },
   {

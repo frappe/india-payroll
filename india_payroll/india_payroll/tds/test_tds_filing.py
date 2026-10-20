@@ -16,6 +16,8 @@ from india_payroll.india_payroll.tds import data_assembly, filing, sheet_json
 from india_payroll.india_payroll.tds import settings as tds_settings
 from india_payroll.india_payroll.tds.data_assembly import quarter_range_from_start
 from india_payroll.india_payroll.tds.sandbox_client import (
+	MOCK_RECEIPT_NUMBER,
+	MOCK_TOKEN_NUMBER,
 	SandboxTDSClient,
 	_mock_file_bytes,
 	_mock_response,
@@ -1559,3 +1561,29 @@ class TestCorrectionFVU(FrappeTestCase):
 		with patch.object(filing, "_read_attachment", side_effect=lambda url: url.encode()):
 			payloads = filing._upload_payloads(doc, None, "generate_fvu")
 		self.assertNotIn("conso_file_upload_url", payloads)
+
+
+class TestEFileReceipt(FrappeTestCase):
+	def test_receipt_number_is_read_from_the_token_row(self):
+		pdf = _mock_file_bytes("mock://result/receipt.pdf")
+		self.assertEqual(filing.receipt_number_from_pdf(pdf, MOCK_TOKEN_NUMBER), MOCK_RECEIPT_NUMBER)
+
+	def test_receipt_number_needs_the_matching_token(self):
+		pdf = _mock_file_bytes("mock://result/receipt.pdf")
+		self.assertIsNone(filing.receipt_number_from_pdf(pdf, "999999999999999"))
+		self.assertIsNone(filing.receipt_number_from_pdf(pdf, None))
+
+	def test_unreadable_receipt_gives_no_receipt_number(self):
+		self.assertIsNone(filing.receipt_number_from_pdf(b"not a pdf", MOCK_TOKEN_NUMBER))
+
+	def test_efile_result_keeps_token_and_receipt_numbers_apart(self):
+		# Sandbox calls the 15-digit token number receipt_number; the receipt number is only on the PDF.
+		doc = frappe._dict(name="RET-1", token_number=None, acknowledgement_number=None)
+		data = _mock_response("GET", "tds/compliance/e-file")["data"]
+		with patch.object(filing, "_attach") as attach:
+			filing._result_efile(doc, _FakeClient(), data)
+
+		self.assertEqual(doc.token_number, MOCK_TOKEN_NUMBER)
+		self.assertEqual(doc.acknowledgement_number, MOCK_RECEIPT_NUMBER)
+		self.assertEqual(attach.call_args[0][1], "receipt_file")
+		self.assertEqual(attach.call_args[0][2], "RET-1-receipt.pdf")

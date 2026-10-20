@@ -75,6 +75,7 @@ class TDSReturn(Document):
 		pan: DF.Data | None
 		previous_receipt_number: DF.Data | None
 		quarter: DF.Literal["Q1", "Q2", "Q3", "Q4"]
+		receipt_file: DF.Attach | None
 		responsible_person_designation: DF.Data | None
 		responsible_person_name: DF.Data | None
 		responsible_person_pan: DF.Data | None
