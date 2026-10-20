@@ -230,7 +230,7 @@ def summarize(challan: dict) -> dict:
 		"cin": challan.get("challan_identification_number"),
 		"status": challan.get("status"),
 		"minor_head": challan.get("minor_head"),
-		"section": ", ".join(filter(None, (row.get("section") for row in breakdown)))
+		"section": ", ".join(row["section"] for row in breakdown if row.get("section"))
 		or challan.get("section_code"),
 	}
 
