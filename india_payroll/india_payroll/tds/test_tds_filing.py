@@ -207,6 +207,79 @@ class TestCsiEndpoints(FrappeTestCase):
 
 		self.assertEqual(csi.verify_csi_otp(_Client(), "REF-1", "123456"), b"CSI-BYTES")
 
+	def test_epoch_is_midnight_ist(self):
+		from india_payroll.india_payroll.tds import csi
+
+		self.assertEqual(csi._epoch_ms("2024-08-01"), 1722450600000)
+		self.assertEqual(csi._epoch_ms("2024-10-31"), 1730313000000)
+
+	def test_verify_surfaces_sandbox_message(self):
+		from india_payroll.india_payroll.tds import csi
+
+		class _Client:
+			def request(self, method, endpoint, json_body=None, **kw):
+				return {"code": 200, "data": {"message": "The OTP you have entered is incorrect."}}
+
+		with self.assertRaisesRegex(frappe.ValidationError, "OTP you have entered is incorrect"):
+			csi.verify_csi_otp(_Client(), "REF-1", "000000")
+
+	def test_otp_request_surfaces_sandbox_message(self):
+		from india_payroll.india_payroll.tds import csi
+
+		class _Client:
+			def request(self, method, endpoint, json_body=None, **kw):
+				return {"code": 200, "data": {"message": "Invalid TAN"}}
+
+		with self.assertRaisesRegex(frappe.ValidationError, "Invalid TAN"):
+			csi.request_csi_otp(_Client(), "MUMW03366G", "9876543210", "2026-07-01", "2026-09-30", "x" * 25)
+
+	def test_no_data_found_is_not_a_csi(self):
+		from india_payroll.india_payroll.tds import csi
+
+		with self.assertRaisesRegex(frappe.ValidationError, "No Data found"):
+			csi.validate_csi_content(b"No Data found", "MUMW03366G")
+		self.assertRaises(frappe.ValidationError, csi.validate_csi_content, b"", "MUMW03366G")
+		self.assertRaises(
+			frappe.ValidationError, csi.validate_csi_content, b"8^AAAA00000A^OTHER^9.5\nabc", "MUMW03366G"
+		)
+
+	def test_real_csi_header_is_accepted(self):
+		from india_payroll.india_payroll.tds import csi
+
+		csi.validate_csi_content(b"8^MUMW03366G^FRAPPE TECHNOLOGIES^9.5^2.191^1.2^1\nae77f2\n", "MUMW03366G")
+
+	def test_csi_range_covers_deposits_after_quarter_end(self):
+		from india_payroll.india_payroll.tds import csi
+
+		challans = [frappe._dict(challan_date=d) for d in ("2026-08-07", "2026-09-07", "2026-10-07")]
+		with (
+			patch.object(csi, "get_challans_for_period", return_value=challans),
+			patch.object(
+				data_assembly,
+				"get_quarter_date_range",
+				return_value=(getdate("2026-07-01"), getdate("2026-09-30")),
+			),
+		):
+			start, end = csi.get_csi_date_range("Co", "2026-2027", "Q2")
+		self.assertEqual(start, getdate("2026-07-01"))
+		self.assertEqual(end, getdate("2026-10-07"))
+
+	def test_csi_range_falls_back_to_quarter_without_challans(self):
+		from india_payroll.india_payroll.tds import csi
+
+		with (
+			patch.object(csi, "get_challans_for_period", return_value=[]),
+			patch.object(
+				data_assembly,
+				"get_quarter_date_range",
+				return_value=(getdate("2026-07-01"), getdate("2026-09-30")),
+			),
+		):
+			self.assertEqual(
+				csi.get_csi_date_range("Co", "2026-2027", "Q2"),
+				(getdate("2026-07-01"), getdate("2026-09-30")),
+			)
+
 
 class TestSecretMasking(FrappeTestCase):
 	def test_sensitive_values_masked(self):
@@ -229,6 +302,11 @@ class TestSecretMasking(FrappeTestCase):
 		# The authenticate() response carries access_token; it must not be logged raw.
 		masked = mask_sensitive({"access_token": "supersecretjwt"})
 		self.assertEqual(masked["access_token"], "***masked***")
+
+	def test_csi_otp_masked(self):
+		masked = mask_sensitive({"reference_id": "FOS1", "otp": "241051"})
+		self.assertEqual(masked["otp"], "***masked***")
+		self.assertEqual(masked["reference_id"], "FOS1")
 
 	def test_set_is_immutable(self):
 		from india_payroll.india_payroll.tds.sandbox_client import SENSITIVE_KEYS
