@@ -32,13 +32,9 @@ REQUEST_TIMEOUT = 60
 
 # Header/body keys whose values must never be written to logs. A frozenset so it
 # cannot be mutated in place at runtime (defense-in-depth against accidental edits).
-<<<<<<< HEAD
-SENSITIVE_KEYS = frozenset({"x-api-key", "x-api-secret", "authorization", "access_token", "api_secret"})
-=======
 SENSITIVE_KEYS = frozenset(
 	{"x-api-key", "x-api-secret", "authorization", "access_token", "api_secret", "otp", "password"}
 )
->>>>>>> a28b437 (feat(tds): check challans on TRACES and import missing ones)
 
 
 MOCK_SCHEME = "mock://"
