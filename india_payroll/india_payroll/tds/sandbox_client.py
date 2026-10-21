@@ -12,11 +12,12 @@ import hashlib
 import io
 import json
 import zipfile
+from datetime import datetime
 
 import frappe
 import requests
 from frappe import _
-from frappe.utils import add_to_date, cint, get_datetime, now_datetime
+from frappe.utils import add_to_date, cint, flt, get_datetime, now_datetime
 
 from india_payroll.india_payroll.tds.settings import get_sandbox_credentials
 
@@ -32,7 +33,7 @@ REQUEST_TIMEOUT = 60
 # Header/body keys whose values must never be written to logs. A frozenset so it
 # cannot be mutated in place at runtime (defense-in-depth against accidental edits).
 SENSITIVE_KEYS = frozenset(
-	{"x-api-key", "x-api-secret", "authorization", "access_token", "api_secret", "otp"}
+	{"x-api-key", "x-api-secret", "authorization", "access_token", "api_secret", "otp", "password"}
 )
 
 
@@ -73,6 +74,9 @@ def _mock_response(method: str, endpoint: str, json_body: dict | None = None) ->
 	body = json_body or {}
 	kind = _mock_endpoint_kind(endpoint)
 
+	if "traces/deductors" in ep:
+		return _mock_traces_response(ep, body)
+
 	if "csi" in ep and kind == "unknown":
 		return {
 			"code": 200,
@@ -87,7 +91,10 @@ def _mock_response(method: str, endpoint: str, json_body: dict | None = None) ->
 			"quarter": body.get("quarter"),
 			"form": body.get("form"),
 		}
-		for field in MOCK_UPLOAD_FIELDS.get(kind, ()):
+		fields = MOCK_UPLOAD_FIELDS.get(kind, ())
+		if kind == "fvu" and body.get("filing_type") == "correction":
+			fields = (*fields, "conso_file_upload_url")
+		for field in fields:
 			data[field] = f"{MOCK_SCHEME}upload/{kind}/{field}"
 		return {"code": 200, "data": data}
 
@@ -99,10 +106,84 @@ def _mock_response(method: str, endpoint: str, json_body: dict | None = None) ->
 	elif kind == "fvu":
 		data["fvu_zip_file_url"] = f"{MOCK_SCHEME}result/fvu.zip"
 	elif kind == "e-file":
-		data["receipt_number"] = "MOCKPRN0001"
-		data["token_number"] = "MOCKTOKEN0001"
-		data["receipt_file_url"] = f"{MOCK_SCHEME}result/receipt.txt"
+		data["receipt_number"] = MOCK_TOKEN_NUMBER
+		data["receipt_file_url"] = f"{MOCK_SCHEME}result/receipt.pdf"
 	return {"code": 200, "data": data}
+
+
+def _mock_traces_response(endpoint: str, body: dict) -> dict:
+	"""TRACES has every challan recorded for the TAN, plus one deposited on the last day searched."""
+	if endpoint.endswith("challans/search"):
+		challans = [
+			_mock_traces_challan(
+				body.get("tan"), c.bsr_code, c.challan_serial_no, c.challan_date, c.deposit_amount
+			)
+			for c in frappe.get_all(
+				"TDS Challan",
+				filters={
+					"tan": body.get("tan"),
+					"docstatus": ("<", 2),
+					"challan_date": (
+						"between",
+						[
+							_mock_epoch_date(body.get("from_date_epoch")),
+							_mock_epoch_date(body.get("to_date_epoch")),
+						],
+					),
+				},
+				fields=["bsr_code", "challan_serial_no", "challan_date", "deposit_amount"],
+			)
+		]
+		challans.append(
+			_mock_traces_challan(
+				body.get("tan"), "0000000", "99999", _mock_epoch_date(body.get("to_date_epoch")), 1000
+			)
+		)
+		return {"code": 200, "data": {"data": challans, "totalPages": 1, "totalElements": len(challans)}}
+	if endpoint.endswith("challans"):
+		paid_date = _mock_epoch_date(body.get("paid_date_epoch"))
+		amount = frappe.db.get_value(
+			"TDS Challan",
+			{
+				"tan": body.get("tan"),
+				"bsr_code": body.get("bsr_code"),
+				"challan_serial_no": body.get("challan_serial"),
+				"challan_date": paid_date,
+				"docstatus": ("<", 2),
+			},
+			"deposit_amount",
+		)
+		return {
+			"code": 200,
+			"data": _mock_traces_challan(
+				body.get("tan"), body.get("bsr_code"), body.get("challan_serial"), paid_date, amount or 0
+			),
+		}
+	return {"code": 200}
+
+
+def _mock_epoch_date(epoch_ms):
+	from india_payroll.india_payroll.tds.csi import IST
+
+	return datetime.fromtimestamp((epoch_ms or 0) / 1000, tz=IST).date()
+
+
+def _mock_traces_challan(tan, bsr_code, challan_serial, paid_date, amount) -> dict:
+	from india_payroll.india_payroll.tds.csi import _epoch_ms
+
+	return {
+		"tan": tan,
+		"bsr_code": bsr_code,
+		"challan_serial": challan_serial,
+		"paid_date_epoch": _epoch_ms(paid_date),
+		"challan_identification_number": f"MOCK{bsr_code}{challan_serial}",
+		"status": "MOCK",
+		"total_amount": flt(amount),
+		"minor_head": "200",
+		"section_code": "92B",
+		"tax_breakdown": [{"section": "92B", "tax_amount": flt(amount), "surcharge": 0, "cess": 0}],
+		"consumption_details": {"claimed_amount": 0, "available_amount": flt(amount)},
+	}
 
 
 def _mock_file_bytes(url: str) -> bytes:
@@ -118,9 +199,37 @@ def _mock_file_bytes(url: str) -> bytes:
 		with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
 			zf.writestr("MOCK.fvu", "MOCK-FVU-FILE\n")
 		return buffer.getvalue()
-	if name == "receipt.txt":
-		return b"MOCK-PROVISIONAL-RECEIPT\n"
+	if name == "receipt.pdf":
+		return _mock_receipt_pdf()
 	return b"MOCK-TXT-FILE\n"
+
+
+MOCK_TOKEN_NUMBER = "000000000000001"
+MOCK_RECEIPT_NUMBER = "MOCKRCPT"
+
+
+def _mock_receipt_pdf() -> bytes:
+	"""A one-page receipt with the token and receipt numbers on one row, as Protean prints them."""
+	text = f"{MOCK_TOKEN_NUMBER} MOCK DEDUCTOR {MOCK_RECEIPT_NUMBER}"
+	stream = f"BT /F1 10 Tf 40 800 Td ({text}) Tj ET".encode()
+	objects = [
+		b"<< /Type /Catalog /Pages 2 0 R >>",
+		b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+		b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R "
+		+ b"/Resources << /Font << /F1 5 0 R >> >> >>",
+		b"<< /Length %d >>\nstream\n%s\nendstream" % (len(stream), stream),
+		b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+	]
+	pdf = b"%PDF-1.4\n"
+	offsets = []
+	for number, body in enumerate(objects, 1):
+		offsets.append(len(pdf))
+		pdf += b"%d 0 obj\n%s\nendobj\n" % (number, body)
+	xref = len(pdf)
+	pdf += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objects) + 1)
+	pdf += b"".join(b"%010d 00000 n \n" % offset for offset in offsets)
+	pdf += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (len(objects) + 1, xref)
+	return pdf
 
 
 MASK = "***masked***"
