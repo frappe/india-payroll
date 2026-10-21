@@ -16,6 +16,7 @@ status. Endpoint paths are overridable via site_config.
 import base64
 import io
 import json
+import re
 import zipfile
 
 import frappe
@@ -196,6 +197,14 @@ def _check_precondition(doc, step: str) -> None:
 					"'Challan Status Inquiry' page to the CSI File field."
 				)
 			)
+		if doc.return_type == "Revised" and not doc.conso_file:
+			frappe.throw(
+				_(
+					"Attach the consolidated file of the filed statement before generating the FVU of "
+					"a correction return. Request it on TRACES, download it once it is ready, and "
+					"attach it to the Consolidated File field."
+				)
+			)
 	elif step == "e_file":
 		if not doc.fvu_file:
 			frappe.throw(_("Generate the FVU file before e-filing."))
@@ -359,10 +368,16 @@ def _upload_payloads(doc, client: SandboxTDSClient, step: str) -> dict:
 		return {"json_url": (sheet, "application/json")}
 
 	if step == "generate_fvu":
-		return {
+		payloads = {
 			"txt_file_upload_url": (_read_attachment(doc.txt_file), "text/plain"),
 			"csi_file_upload_url": (_read_attachment(doc.csi_file), "application/octet-stream"),
 		}
+		if doc.return_type == "Revised":
+			payloads["conso_file_upload_url"] = (
+				_read_attachment(doc.conso_file),
+				"application/octet-stream",
+			)
+		return payloads
 
 	if step == "e_file":
 		return {"fvu_upload_file_url": (_read_attachment(doc.fvu_file), "application/zip")}
@@ -608,15 +623,46 @@ def _result_fvu(doc, client: SandboxTDSClient, data: dict) -> None:
 
 
 def _result_efile(doc, client: SandboxTDSClient, data: dict) -> None:
-	receipt = (
-		data.get("receipt_number") or data.get("provisional_receipt_number") or data.get("acknowledgement")
-	)
-	doc.acknowledgement_number = str(receipt) if receipt is not None else None
-	doc.token_number = data.get("token_number") or data.get("token")
+	"""Sandbox's receipt_number is the 15-digit token number; the receipt number is only on the PDF."""
+	token = data.get("receipt_number") or data.get("token_number")
+	doc.token_number = str(token) if token is not None else None
 	doc.filing_date = now_datetime()
 
-	if data.get("receipt_file_url"):
-		_save_report(doc, client, data["receipt_file_url"], f"{doc.name}-receipt")
+	url = data.get("receipt_file_url")
+	if not url:
+		return
+	try:
+		content = client.fetch_file(url)
+	except Exception:
+		frappe.log_error(title=f"TDS receipt download failed for {doc.name}")
+		return
+
+	doc.acknowledgement_number = receipt_number_from_pdf(content, doc.token_number)
+	try:
+		_attach(doc, "receipt_file", f"{doc.name}-receipt{_extension_for(url)}", content)
+	except Exception:
+		frappe.log_error(title=f"TDS receipt attach failed for {doc.name}")
+
+
+RECEIPT_NUMBER = re.compile(r"^[A-Z0-9]{8}$")
+
+
+def receipt_number_from_pdf(content: bytes, token_number: str | None) -> str | None:
+	"""The receipt number closes the row that opens with the token number."""
+	from pypdf import PdfReader
+
+	if not token_number:
+		return None
+	try:
+		text = PdfReader(io.BytesIO(content)).pages[0].extract_text()
+	except Exception:
+		return None
+
+	for line in text.splitlines():
+		parts = line.split()
+		if len(parts) > 1 and parts[0] == token_number and RECEIPT_NUMBER.match(parts[-1]):
+			return parts[-1]
+	return None
 
 
 _HANDLE_RESULT = {

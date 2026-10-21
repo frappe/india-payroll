@@ -468,6 +468,9 @@ class TestESI(HRMSTestSuite):
 
 		self.assertAlmostEqual(slip.gross_pay, 10_000, places=2)
 		self.assertAlmostEqual(self._esi_rows(slip)[0].amount, flt(10_000 * EMPLOYEE_ESI_RATE, 2), places=2)
+		self.assertAlmostEqual(
+			self._employer_esi_rows(slip)[0].amount, flt(10_000 * EMPLOYER_ESI_RATE, 2), places=2
+		)
 
 	def test_is_esi_wage_component_heuristic(self):
 		for name in (
