@@ -203,11 +203,15 @@ doc_events = {
 		"on_submit": [
 			"india_payroll.india_payroll.employer_pf.validate_joint_declaration_on_submit",
 		],
+		"before_update_after_submit": [
+			"india_payroll.india_payroll.employer_pf.validate_joint_declaration_on_submit",
+		],
 	},
 	"Salary Slip": {
 		"validate": [
 			"india_payroll.india_payroll.employer_pf.set_employer_pf_contributions",
 		],
+		"on_submit": "india_payroll.telemetry.on_salary_slip_submit",
 	},
 	"Payroll Settings": {
 		"validate": [
@@ -221,7 +225,6 @@ doc_events = {
 	"Company": {
 		"validate": "india_payroll.india_payroll.tds.settings.validate_deductor_details",
 	},
-	"Salary Slip": {"on_submit": "india_payroll.telemetry.on_salary_slip_submit"},
 	"TDS Return": {
 		"after_insert": "india_payroll.telemetry.on_tds_return_insert",
 		"on_submit": "india_payroll.telemetry.on_tds_return_submit",
