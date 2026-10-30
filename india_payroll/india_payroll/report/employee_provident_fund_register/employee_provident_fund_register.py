@@ -5,6 +5,7 @@ import datetime
 
 import frappe
 from frappe import _
+from frappe.desk.query_report import get_report_doc
 from frappe.query_builder import DocType
 from frappe.utils import flt
 
@@ -373,6 +374,8 @@ def get_ecr_file(filters: dict | str) -> dict:
 	risks under-reporting remittances.  The error lists the affected
 	employees so the user can fix the UAN mapping and retry.
 	"""
+	get_report_doc("Employee Provident Fund Register")
+
 	if isinstance(filters, str):
 		filters = frappe.parse_json(filters)
 
