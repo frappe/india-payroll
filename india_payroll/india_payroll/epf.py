@@ -5,7 +5,7 @@ import datetime
 import re
 
 import frappe
-from frappe.utils import date_diff, flt, getdate, nowdate
+from frappe.utils import add_days, add_years, date_diff, flt, getdate, nowdate
 
 from india_payroll.india_payroll.company_settings import is_statutory_enabled
 from india_payroll.india_payroll.utils import get_slip_ssa_values
@@ -76,7 +76,6 @@ def apply_epf(doc, method=None) -> None:
 	Retaining Allowance earnings on the slip only (see ``_compute_pf_wage``) — never on gross pay.
 
 	Gated by a single `epf_applicable` flag on the Salary Structure Assignment.
-	All employees are assumed to be post-1 Sept 2014 EPF members.
 	"""
 	if not is_statutory_enabled("epf", doc.company):
 		_remove_epf_components(doc)
@@ -215,17 +214,22 @@ def cap_pf_wage(pf_wage, ceilings) -> float:
 	return flt(sum(min(flt(pf_wage), ceiling) * share for ceiling, share in ceilings), 2)
 
 
-def get_employer_epf_split(pf_wage, ceilings, *, contribute_on_actual=False) -> frappe._dict:
+def get_employer_epf_split(
+	pf_wage, ceilings, *, contribute_on_actual=False, eps_member=False, eps_ceilings=None
+) -> frappe._dict:
 	"""The employer's EPF-scheme cost for one period's PF wage, per EPFO statute.
 
 	The one implementation, shared by CTC, the slip and the EPF register / ECR.
 	Only EPF and admin follow ``contribute_on_actual``; EPS and EDLI stay capped.
-	EPS is carved out of the employer's 12%, never added to it.
+	EPS is carved out of the employer's 12%, never added to it. ``eps_ceilings``
+	defaults to ``ceilings``; see ``get_eps_ceilings`` for the age 58 cut-off.
 	"""
 	pf_wage = flt(pf_wage)
 	capped = cap_pf_wage(pf_wage, ceilings)
 	epf_wages = pf_wage if contribute_on_actual else capped
-	eps_wages = get_eps_wage(pf_wage, ceilings)
+	eps_wages = get_eps_wage(
+		pf_wage, ceilings if eps_ceilings is None else eps_ceilings, eps_member=eps_member
+	)
 
 	eps = _epfo_round(eps_wages * EPS_RATE)
 	employer_total = _epfo_round(epf_wages * EPF_EMPLOYER_RATE)
@@ -256,10 +260,20 @@ def get_employer_contributions(earnings, config, *, paid_field="amount", company
 	if wage <= 0:
 		return zero
 
+	ceilings = _get_config_ceilings(config)
 	split = get_employer_epf_split(
 		wage,
-		_get_config_ceilings(config),
+		ceilings,
 		contribute_on_actual=bool(config.get("contribute_on_actual_pf_wage")),
+		eps_member=bool(config.get("eps_member")),
+		eps_ceilings=get_eps_ceilings(
+			ceilings,
+			config.get("start_date") or config.get("from_date") or nowdate(),
+			config.get("end_date"),
+			date_of_birth=config.get("date_of_birth"),
+			joining_date=config.get("joining_date"),
+			relieving_date=config.get("relieving_date"),
+		),
 	)
 
 	return {
@@ -279,14 +293,50 @@ def _get_config_ceilings(config) -> list[tuple[float, float]]:
 	)
 
 
-def get_eps_wage(pf_wage, ceilings) -> float:
+def get_eps_wage(pf_wage, ceilings, *, eps_member=False) -> float:
 	"""EPS wage for the period.
 
-	Post-1 Sept 2014 rule: a member whose PF wage exceeds the ceiling gets no
-	EPS, applied per ceiling in force, so ₹20,000 in September 2026 earns EPS
+	An EPS member (one on 1 Sept 2014, or one who joined EPF within the
+	ceiling) stays in EPS on the PF wage capped at each ceiling, however high
+	the wage goes.
+
+	Otherwise the post-1 Sept 2014 rule applies: a PF wage above the ceiling
+	gets no EPS, per ceiling in force, so ₹20,000 in September 2026 earns EPS
 	on the 14 days under the ₹25,000 ceiling only.
 	"""
-	return flt(sum(flt(pf_wage) * share for ceiling, share in ceilings if flt(pf_wage) <= ceiling), 2)
+	pf_wage = flt(pf_wage)
+	if eps_member:
+		return cap_pf_wage(pf_wage, ceilings)
+	return flt(sum(pf_wage * share for ceiling, share in ceilings if pf_wage <= ceiling), 2)
+
+
+def get_eps_ceilings(
+	ceilings, start_date, end_date=None, *, date_of_birth=None, joining_date=None, relieving_date=None
+) -> list[tuple[float, float]]:
+	"""``ceilings`` limited to the days before the member turns 58.
+
+	EPS membership ends at 58 and the employer's whole 12% goes to EPF, so a
+	member turning 58 on 16 June gets EPS on 15 of June's 30 days and none after.
+	"""
+	if not date_of_birth:
+		return ceilings
+
+	start = getdate(start_date)
+	end = getdate(end_date) if end_date else start
+	if joining_date and start < getdate(joining_date) <= end:
+		start = getdate(joining_date)
+	if relieving_date and start <= getdate(relieving_date) < end:
+		end = getdate(relieving_date)
+
+	turns_58 = getdate(add_years(getdate(date_of_birth), 58))
+	if turns_58 > end:
+		return ceilings
+	if turns_58 <= start:
+		return []
+
+	eligible_till = getdate(add_days(turns_58, -1))
+	share = (date_diff(eligible_till, start) + 1) / (date_diff(end, start) + 1)
+	return [(ceiling, part * share) for ceiling, part in _ceiling_shares(start, eligible_till)]
 
 
 # ---------------------------------------------------------------------------

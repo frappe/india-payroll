@@ -18,6 +18,7 @@ from india_payroll.india_payroll.epf import (
 	VPF_COMPONENT,
 	get_employer_epf_split,
 	get_epf_wage_ceilings,
+	get_eps_ceilings,
 	is_pf_wage_component,
 )
 from india_payroll.india_payroll.utils import get_effective_ssa_values
@@ -174,6 +175,7 @@ def get_data(filters):
 			Emp.designation,
 			Emp.date_of_joining,
 			Emp.relieving_date,
+			Emp.date_of_birth,
 		)
 		.where(SS.docstatus == 1)
 	)
@@ -200,10 +202,11 @@ def get_data(filters):
 			s.company,
 			s.salary_structure,
 			s.start_date,
-			["epf_applicable", "contribute_on_actual_pf_wage"],
+			["epf_applicable", "contribute_on_actual_pf_wage", "eps_member"],
 		)
 		s["epf_applicable"] = ssa.get("epf_applicable")
 		s["contribute_on_actual_pf_wage"] = ssa.get("contribute_on_actual_pf_wage")
+		s["eps_member"] = ssa.get("eps_member")
 
 	# Only employees opted into EPF on their assignment appear in the register.
 	slips = [s for s in slips if s.get("epf_applicable")]
@@ -224,7 +227,18 @@ def get_data(filters):
 			s.start_date, s.end_date, joining_date=s.date_of_joining, relieving_date=s.relieving_date
 		)
 		split = get_employer_epf_split(
-			pf_wage, ceilings, contribute_on_actual=bool(s.get("contribute_on_actual_pf_wage"))
+			pf_wage,
+			ceilings,
+			contribute_on_actual=bool(s.get("contribute_on_actual_pf_wage")),
+			eps_member=bool(s.get("eps_member")),
+			eps_ceilings=get_eps_ceilings(
+				ceilings,
+				s.start_date,
+				s.end_date,
+				date_of_birth=s.date_of_birth,
+				joining_date=s.date_of_joining,
+				relieving_date=s.relieving_date,
+			),
 		)
 
 		ncp_days = flt(s.get("leave_without_pay")) + flt(s.get("absent_days"))

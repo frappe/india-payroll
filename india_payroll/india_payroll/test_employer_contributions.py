@@ -186,6 +186,29 @@ class TestEmployerContributions(HRMSTestSuite):
 		self.assertEqual(amounts[EDLI_COMPONENT], 125)
 		self.assertEqual(amounts[EPF_ADMIN_COMPONENT], 125)
 
+	def test_eps_member_keeps_eps_above_the_revised_ceiling(self):
+		ssa = self._make_epf_assignment(
+			"ctc_epf_eps_member@indiapayroll.com", 30_000.0, _AFTER_REVISION, eps_member=1
+		)
+
+		amounts = self._employer_amounts(ssa)
+
+		self.assertEqual(amounts[EPS_COMPONENT], 2_083)
+		self.assertEqual(amounts[EPF_EMPLOYER_COMPONENT], 917)
+
+	def test_ctc_for_an_unsaved_employee(self):
+		ssa = self._make_epf_assignment(
+			"ctc_epf_unsaved@indiapayroll.com", 30_000.0, _AFTER_REVISION, eps_member=1
+		)
+		# a Job Offer prices an in-memory Employee, not a saved one's name
+		ssa.employee = frappe.new_doc("Employee")
+		ssa.employee.date_of_birth = "1960-01-01"
+
+		amounts = self._employer_amounts(ssa)
+
+		self.assertNotIn(EPS_COMPONENT, amounts)
+		self.assertEqual(amounts[EPF_EMPLOYER_COMPONENT], 3_000)
+
 	def test_no_eps_above_the_previous_ceiling(self):
 		ssa = self._make_epf_assignment("ctc_epf_above_old@indiapayroll.com", 20_000.0, _BEFORE_REVISION)
 
