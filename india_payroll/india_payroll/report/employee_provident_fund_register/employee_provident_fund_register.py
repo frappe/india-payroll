@@ -5,6 +5,7 @@ import datetime
 
 import frappe
 from frappe import _
+from frappe.desk.query_report import get_report_doc
 from frappe.query_builder import DocType
 from frappe.utils import flt
 
@@ -290,7 +291,7 @@ def _aggregate_salary_detail(slip_names: list[str]) -> dict:
 	"""One Salary Detail sweep across all slips in the report.
 
 	PF wage is the sum of PF-eligible earnings, mirroring ``epf._compute_pf_wage``:
-	only Basic and Dearness Allowance earnings count (matched by
+	only Basic, Dearness Allowance and Retaining Allowance earnings count (matched by
 	``epf.is_pf_wage_component``), and anything sourced from an Additional
 	Salary (arrears/incentives) is excluded.
 
@@ -312,7 +313,7 @@ def _aggregate_salary_detail(slip_names: list[str]) -> dict:
 	for r in rows:
 		bucket = totals.setdefault(r.parent, {})
 		if r.parentfield == "earnings":
-			# Count only Basic / Dearness Allowance, and never Additional Salary.
+			# Count only Basic / DA / Retaining Allowance, and never Additional Salary.
 			if r.additional_salary:
 				continue
 			if not is_pf_wage_component(r.salary_component):
@@ -384,6 +385,8 @@ def get_ecr_file(filters: dict | str) -> dict:
 	risks under-reporting remittances.  The error lists the affected
 	employees so the user can fix the UAN mapping and retry.
 	"""
+	get_report_doc("Employee Provident Fund Register")
+
 	if isinstance(filters, str):
 		filters = frappe.parse_json(filters)
 

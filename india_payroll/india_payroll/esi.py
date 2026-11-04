@@ -16,11 +16,8 @@ EMPLOYER_ESI_RATE = 0.0325
 ESI_WAGE_CEILING = 21_000
 ESI_WAGE_CEILING_DISABILITY = 25_000
 
-ESI_WAGE_COMPONENT_PATTERNS = (
-	*PF_WAGE_COMPONENT_PATTERNS,
-	r"\bretaining\b",  # Retaining Allowance
-	r"\bra\b",  # RA
-)
+# ESI wage covers the same heads as PF wage: Basic, DA and Retaining Allowance.
+ESI_WAGE_COMPONENT_PATTERNS = PF_WAGE_COMPONENT_PATTERNS
 
 _ESI_WAGE_COMPONENT_RE = re.compile("|".join(ESI_WAGE_COMPONENT_PATTERNS))
 
