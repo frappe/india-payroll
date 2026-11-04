@@ -28,6 +28,7 @@ from india_payroll.india_payroll.epf import (
 	cap_pf_wage,
 	get_epf_wage_ceiling,
 	get_epf_wage_ceilings,
+	get_eps_ceilings,
 	get_eps_wage,
 )
 from india_payroll.install import create_epf_components
@@ -89,6 +90,8 @@ _TEST_EMAILS = [
 	"test_epf_employer_ctc@indiapayroll.com",
 	"test_epf_employer_not_applicable@indiapayroll.com",
 	"test_epf_employer_structure_rows@indiapayroll.com",
+	"test_epf_eps_member@indiapayroll.com",
+	"test_epf_eps_age_58@indiapayroll.com",
 ]
 
 
@@ -114,7 +117,7 @@ class TestEPF(HRMSTestSuite):
 			emp = frappe.db.get_value("Employee", {"employee_name": email}, "name")
 			if emp:
 				frappe.db.delete("Salary Structure Assignment", {"employee": emp})
-				frappe.db.set_value("Employee", emp, "relieving_date", None)
+				frappe.db.set_value("Employee", emp, {"relieving_date": None, "date_of_birth": "1990-05-08"})
 
 	def _make_salary_slip(
 		self,
@@ -437,6 +440,82 @@ class TestEPF(HRMSTestSuite):
 
 		self.assertEqual(get_eps_wage(20_000, get_epf_wage_ceilings("2026-08-01", "2026-08-31")), 0)
 		self.assertEqual(get_eps_wage(20_000, get_epf_wage_ceilings("2026-10-01", "2026-10-31")), 20_000)
+
+	def test_eps_member_keeps_eps_above_ceiling(self):
+		for start, end, expected in (
+			("2026-08-01", "2026-08-31", 15_000),
+			("2026-09-01", "2026-09-30", 19_666.67),
+			("2026-10-01", "2026-10-31", 25_000),
+		):
+			ceilings = get_epf_wage_ceilings(start, end)
+			with self.subTest(start=start):
+				self.assertEqual(get_eps_wage(30_000, ceilings, eps_member=True), expected)
+				self.assertEqual(get_eps_wage(30_000, ceilings), 0)
+
+		october = get_epf_wage_ceilings("2026-10-01", "2026-10-31")
+		self.assertEqual(get_eps_wage(20_000, october, eps_member=True), 20_000)
+
+	def test_eps_stops_at_58(self):
+		june = get_epf_wage_ceilings("2026-06-01", "2026-06-30")
+
+		self.assertEqual(get_eps_ceilings(june, "2026-06-01", "2026-06-30", date_of_birth="1990-05-08"), june)
+		self.assertEqual(get_eps_ceilings(june, "2026-06-01", "2026-06-30", date_of_birth="1968-06-01"), [])
+		self.assertEqual(
+			get_eps_ceilings(june, "2026-06-01", "2026-06-30", date_of_birth="1968-06-16"),
+			[(EPF_PREVIOUS_WAGE_CEILING, 0.5)],
+		)
+
+		september = get_epf_wage_ceilings("2026-09-01", "2026-09-30")
+		turns_58_on_21st = get_eps_ceilings(september, "2026-09-01", "2026-09-30", date_of_birth="1968-09-21")
+		self.assertEqual(get_eps_wage(30_000, turns_58_on_21st, eps_member=True), 11_333.33)
+
+	@HRMSTestSuite.change_settings(
+		"Payroll Settings",
+		{"enable_epf": 1, "enable_professional_tax": 0, "enable_esic": 0, "enable_lwf": 0},
+	)
+	def test_eps_member_above_ceiling_on_slip_and_register(self):
+		from india_payroll.india_payroll.report.employee_provident_fund_register.employee_provident_fund_register import (
+			execute,
+		)
+
+		employee, slip = self._make_salary_slip(
+			"test_epf_eps_member@indiapayroll.com",
+			"Test EPF EPS Member Structure",
+			30_000.0,
+			posting_date="2026-10-01",
+			start_date="2026-10-01",
+			end_date="2026-10-31",
+		)
+		self._set_ssa(employee, {"eps_member": 1})
+		slip.insert()
+		slip.submit()
+
+		self.assertEqual(self._amount(slip, "deductions", EPF_EMPLOYEE_COMPONENT), 3_000)
+		self.assertEqual(self._amount(slip, "employer_contributions", EPS_COMPONENT), 2_083)
+		self.assertEqual(self._amount(slip, "employer_contributions", EPF_EMPLOYER_COMPONENT), 917)
+
+		rows = execute(frappe._dict({"company": "_Test Company", "from_year": 2026, "month": "October"}))[1]
+		row = next(r for r in rows if r["employee"] == employee)
+		self.assertEqual(row["eps_wages"], 25_000)
+		self.assertEqual(row["eps_contribution"], 2_083)
+		self.assertEqual(row["employer_epf_diff"], 917)
+
+	@HRMSTestSuite.change_settings(
+		"Payroll Settings",
+		{"enable_epf": 1, "enable_professional_tax": 0, "enable_esic": 0, "enable_lwf": 0},
+	)
+	def test_no_eps_after_58(self):
+		employee, slip = self._make_salary_slip(
+			"test_epf_eps_age_58@indiapayroll.com",
+			"Test EPF EPS Age 58 Structure",
+			15_000.0,
+		)
+		frappe.db.set_value("Employee", employee, "date_of_birth", "1967-01-15")
+		self._set_ssa(employee, {"eps_member": 1})
+		slip.insert()
+
+		self.assertEqual(self._amount(slip, "employer_contributions", EPS_COMPONENT), 0)
+		self.assertEqual(self._amount(slip, "employer_contributions", EPF_EMPLOYER_COMPONENT), 1_800)
 
 	@HRMSTestSuite.change_settings(
 		"Payroll Settings",
