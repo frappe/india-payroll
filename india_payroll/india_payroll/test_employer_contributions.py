@@ -114,3 +114,123 @@ class TestEmployerContributions(HRMSTestSuite):
 
 		cached = frappe.get_cached_doc("Salary Structure", ssa.salary_structure)
 		self.assertEqual(len(cached.employer_contributions), 0)
+<<<<<<< HEAD
+=======
+
+	def test_employer_epf_at_the_previous_ceiling(self):
+		ssa = self._make_epf_assignment("ctc_epf_old@indiapayroll.com", 15_000.0, _BEFORE_REVISION)
+
+		amounts = self._employer_amounts(ssa)
+
+		# 12% of 15,000 is 1,800, of which EPS takes 8.33% (1,250, half-up)
+		self.assertEqual(amounts[EPS_COMPONENT], 1_250)
+		self.assertEqual(amounts[EPF_EMPLOYER_COMPONENT], 550)
+		self.assertEqual(amounts[EDLI_COMPONENT], 75)
+		self.assertEqual(amounts[EPF_ADMIN_COMPONENT], 75)
+
+	def test_employer_epf_at_the_revised_ceiling(self):
+		base = 25_000.0
+		ssa = self._make_epf_assignment("ctc_epf_new@indiapayroll.com", base, _AFTER_REVISION)
+
+		amounts = self._employer_amounts(ssa)
+
+		# 12% of 25,000 is 3,000, of which EPS takes 8.33% (2,083, half-up)
+		self.assertEqual(amounts[EPS_COMPONENT], 2_083)
+		self.assertEqual(amounts[EPF_EMPLOYER_COMPONENT], 917)
+		self.assertEqual(amounts[EDLI_COMPONENT], 125)
+		self.assertEqual(amounts[EPF_ADMIN_COMPONENT], 125)
+		self.assertNotIn(ESI_EMPLOYER_COMPONENT, amounts)
+
+		self.assertAlmostEqual(ssa.ctc - ssa.annual_gross_earning, (3_000 + 125 + 125) * 12, places=2)
+
+	def test_no_eps_above_the_revised_ceiling(self):
+		ssa = self._make_epf_assignment("ctc_epf_above@indiapayroll.com", 30_000.0, _AFTER_REVISION)
+
+		amounts = self._employer_amounts(ssa)
+
+		self.assertNotIn(EPS_COMPONENT, amounts)
+		self.assertEqual(amounts[EPF_EMPLOYER_COMPONENT], 3_000)
+		self.assertEqual(amounts[EDLI_COMPONENT], 125)
+		self.assertEqual(amounts[EPF_ADMIN_COMPONENT], 125)
+
+	def test_eps_member_keeps_eps_above_the_revised_ceiling(self):
+		ssa = self._make_epf_assignment(
+			"ctc_epf_eps_member@indiapayroll.com", 30_000.0, _AFTER_REVISION, eps_member=1
+		)
+
+		amounts = self._employer_amounts(ssa)
+
+		self.assertEqual(amounts[EPS_COMPONENT], 2_083)
+		self.assertEqual(amounts[EPF_EMPLOYER_COMPONENT], 917)
+
+	def test_ctc_for_an_unsaved_employee(self):
+		ssa = self._make_epf_assignment(
+			"ctc_epf_unsaved@indiapayroll.com", 30_000.0, _AFTER_REVISION, eps_member=1
+		)
+		# a Job Offer prices an in-memory Employee, not a saved one's name
+		ssa.employee = frappe.new_doc("Employee")
+		ssa.employee.date_of_birth = "1960-01-01"
+
+		amounts = self._employer_amounts(ssa)
+
+		self.assertNotIn(EPS_COMPONENT, amounts)
+		self.assertEqual(amounts[EPF_EMPLOYER_COMPONENT], 3_000)
+
+	def test_no_eps_above_the_previous_ceiling(self):
+		ssa = self._make_epf_assignment("ctc_epf_above_old@indiapayroll.com", 20_000.0, _BEFORE_REVISION)
+
+		amounts = self._employer_amounts(ssa)
+
+		self.assertNotIn(EPS_COMPONENT, amounts)
+		self.assertEqual(amounts[EPF_EMPLOYER_COMPONENT], 1_800)
+
+	def test_contribute_on_actual_raises_employer_epf_and_admin(self):
+		ssa = self._make_epf_assignment(
+			"ctc_epf_actual@indiapayroll.com",
+			30_000.0,
+			_AFTER_REVISION,
+			contribute_on_actual_pf_wage=1,
+		)
+
+		amounts = self._employer_amounts(ssa)
+
+		self.assertEqual(amounts[EPF_EMPLOYER_COMPONENT], 3_600)
+		self.assertEqual(amounts[EDLI_COMPONENT], 125)
+		self.assertEqual(amounts[EPF_ADMIN_COMPONENT], 150)
+
+	def test_computed_epf_overrides_a_flat_structure_row(self):
+		ssa = self._make_assignment(
+			"ctc_epf_flat@indiapayroll.com",
+			"CTC EPF Flat Structure",
+			30_000.0,
+			other_details={
+				"employer_contributions": [
+					{"salary_component": EPF_EMPLOYER_COMPONENT, "abbr": "EPF", "amount": 1_800}
+				]
+			},
+			config={"epf_applicable": 1},
+			from_date=_AFTER_REVISION,
+		)
+
+		rows = [r for r in self._employer_rows(ssa) if r.salary_component == EPF_EMPLOYER_COMPONENT]
+		self.assertEqual(len(rows), 1)
+		self.assertEqual(rows[0].default_amount, 3_000)
+
+	def test_no_employer_epf_when_not_applicable(self):
+		ssa = self._make_epf_assignment(
+			"ctc_epf_off@indiapayroll.com", 30_000.0, _AFTER_REVISION, epf_applicable=0
+		)
+
+		amounts = self._employer_amounts(ssa)
+
+		for component in EPF_EMPLOYER_COMPONENTS:
+			self.assertNotIn(component, amounts)
+		self.assertAlmostEqual(ssa.ctc, ssa.annual_gross_earning, places=2)
+
+	def test_no_employer_epf_when_epf_disabled(self):
+		frappe.db.set_single_value("Payroll Settings", "enable_epf", 0)
+		ssa = self._make_epf_assignment("ctc_epf_disabled@indiapayroll.com", 30_000.0, _AFTER_REVISION)
+
+		self.assertNotIn(EPF_EMPLOYER_COMPONENT, self._employer_amounts(ssa))
+		self.assertAlmostEqual(ssa.ctc, ssa.annual_gross_earning, places=2)
+>>>>>>> 39331b1 (fix: keep EPS for EPS members above the wage ceiling)
