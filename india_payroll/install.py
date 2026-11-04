@@ -574,9 +574,23 @@ def get_custom_fields():
 				),
 			},
 			{
+				"fieldname": "eps_member",
+				"label": "EPS Member",
+				"fieldtype": "Check",
+				"insert_after": "contribute_on_actual_pf_wage",
+				"depends_on": "eval:doc.epf_applicable",
+				"allow_on_submit": 1,
+				"description": (
+					"Check if the employee is in the Employees' Pension Scheme: a member on "
+					"1 Sept 2014, or one who joined EPF with PF wage within the ceiling. EPS "
+					"then stays at 8.33% of the PF wage up to the ceiling even when the wage "
+					"is above it. EPS stops when the employee turns 58."
+				),
+			},
+			{
 				"fieldname": "india_payroll_epf_cb",
 				"fieldtype": "Column Break",
-				"insert_after": "contribute_on_actual_pf_wage",
+				"insert_after": "eps_member",
 			},
 			{
 				"fieldname": "vpf_mode",

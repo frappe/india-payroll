@@ -14,7 +14,7 @@ from india_payroll.india_payroll.utils import get_slip_ssa_values
 CONTRIBUTION_SOURCES = (esi.get_employer_contributions, epf.get_employer_contributions)
 
 # assignment fields the sources read
-CONFIG_FIELDS = ("is_person_with_disability", "epf_applicable", "contribute_on_actual_pf_wage")
+CONFIG_FIELDS = ("is_person_with_disability", "epf_applicable", "contribute_on_actual_pf_wage", "eps_member")
 
 
 def compute_employer_contributions(earnings, config, *, paid_field="amount", company=None) -> dict:
@@ -33,7 +33,11 @@ def apply_regional_ctc_components(assignment, rows_by_type, data) -> None:
 	"""Regional CTC hook -- without it, CTC understates the employer's cost."""
 	earnings = rows_by_type.get("earnings") or []
 	config = frappe._dict({field: assignment.get(field) for field in CONFIG_FIELDS})
-	config.update(start_date=data.get("start_date"), end_date=data.get("end_date"))
+	config.update(
+		start_date=data.get("start_date"),
+		end_date=data.get("end_date"),
+		date_of_birth=_get_date_of_birth(assignment.employee),
+	)
 	# an assignment evaluates a full cycle, so full-cycle wage is the paid wage
 	contributions = compute_employer_contributions(
 		earnings, config, paid_field="default_amount", company=assignment.company
@@ -41,6 +45,13 @@ def apply_regional_ctc_components(assignment, rows_by_type, data) -> None:
 
 	for component, amount in contributions.items():
 		assignment.upsert_employer_contribution(rows_by_type, data, component, amount)
+
+
+def _get_date_of_birth(employee):
+	# a Job Offer prices an unsaved Employee document, not a saved one's name
+	if isinstance(employee, str):
+		return frappe.get_cached_value("Employee", employee, "date_of_birth")
+	return employee.get("date_of_birth") if employee else None
 
 
 def set_slip_employer_contributions(doc) -> None:
@@ -52,14 +63,15 @@ def set_slip_employer_contributions(doc) -> None:
 		return
 
 	config = get_slip_ssa_values(doc, list(CONFIG_FIELDS))
-	joining_date, relieving_date = frappe.get_cached_value(
-		"Employee", doc.employee, ["date_of_joining", "relieving_date"]
+	joining_date, relieving_date, date_of_birth = frappe.get_cached_value(
+		"Employee", doc.employee, ["date_of_joining", "relieving_date", "date_of_birth"]
 	)
 	config.update(
 		start_date=doc.start_date,
 		end_date=doc.end_date,
 		joining_date=joining_date,
 		relieving_date=relieving_date,
+		date_of_birth=date_of_birth,
 	)
 	amounts = compute_employer_contributions(doc.earnings, config, company=doc.company)
 
