@@ -1101,7 +1101,7 @@ class TestSheetJsonWorkbook(FrappeTestCase):
 			deductor_name="ACME PRIVATE LIMITED",
 			deductor_branch="HO",
 			deductor_gstin="24AAACA1234Z1ZP",
-			deductor_type_code="K",
+			deductor_type_code="K - Company",
 			deductor_email="tds@acme.test",
 			deductor_contact_country_code="91",
 			deductor_contact_number="9876543210",
@@ -1196,6 +1196,12 @@ class TestSheetJsonWorkbook(FrappeTestCase):
 			payer = book["sheets"][0]["blocks"][0]
 			tan = next(v for item in payer["items"] for k, v in item.items() if k == "tan")
 			self.assertEqual(tan, "MUMW03366G", workbook)
+
+	def test_deductor_type_sends_only_the_itd_code(self):
+		book = self._build("form138_workbook")
+		payer = book["sheets"][0]["blocks"][0]
+		value = next(v for item in payer["items"] for k, v in item.items() if k == "deductor_type")
+		self.assertEqual(value, "K")
 
 	def test_dates_are_epoch_milliseconds(self):
 		book = self._build("form138_workbook")

@@ -388,10 +388,11 @@
    "label": "Branch / Division"
   },
   {
-   "description": "Single-letter ITD code, e.g. K (company), A (government).",
+   "default": "K - Company",
    "fieldname": "deductor_type_code",
-   "fieldtype": "Data",
-   "label": "Deductor Type Code"
+   "fieldtype": "Select",
+   "label": "Deductor Type",
+   "options": "A - Central Government\nS - State Government\nD - Statutory Body (Central Govt.)\nE - Statutory Body (State Govt.)\nG - Autonomous Body (Central Govt.)\nH - Autonomous Body (State Govt.)\nL - Local Authority (Central Govt.)\nN - Local Authority (State Govt.)\nK - Company\nM - Branch / Division of Company\nP - Association of Persons (AOP)\nT - Association of Persons (Trust)\nJ - Artificial Juridical Person\nB - Body of Individuals\nQ - Individual / HUF\nF - Firm"
   },
   {
    "fieldname": "deductor_gstin",
@@ -468,7 +469,7 @@
   },
   {
    "collapsible": 1,
-   "depends_on": "eval:doc.deductor_type_code && ['A','S','D','E','G','H','L','N'].includes(doc.deductor_type_code)",
+   "depends_on": "eval:doc.deductor_type_code && ['A','S','D','E','G','H','L','N'].includes(doc.deductor_type_code[0])",
    "fieldname": "govt_section",
    "fieldtype": "Section Break",
    "label": "Government Deductor"
@@ -611,7 +612,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-10-19 12:00:00.000000",
+ "modified": "2026-11-02 12:00:00.000000",
  "module": "India Payroll",
  "name": "TDS Return",
  "naming_rule": "Expression",
