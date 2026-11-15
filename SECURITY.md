@@ -4,15 +4,12 @@ The Frappe team and community take security issues in India Payroll seriously. T
 
 Before you report, please read our [security policy](https://frappe.io/security). It covers scope, what to include in a report, disclosure, CVE assignment and credits.
 
-We provide security fixes for the following versions of India Payroll:
+## Supported Versions
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 16.x    | :white_check_mark: |
+We provide security fixes only for the latest release of India Payroll. Fixes are not backported to older releases.
 
-We release security fixes as patch releases of each supported version. To get them, update to the latest release of your version.
+To get security fixes, update to the [latest release](https://github.com/frappe/india-payroll/releases/latest). If you find a vulnerability in an older release, please check that it still exists in the latest release before you report it.
 
-If you are on a version that is no longer supported, please upgrade to a supported version. We do not fix vulnerabilities in unsupported versions, and reports that affect only those versions are out of scope.
 
 ## Security Advisories
 
