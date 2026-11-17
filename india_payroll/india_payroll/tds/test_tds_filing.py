@@ -679,6 +679,126 @@ class TestPollGuards(FrappeTestCase):
 			filing.poll_return("TDS-RET-DRAFT")
 
 
+class _PollDoc:
+	def __init__(self, job_id="JOB-1"):
+		self.name = "TDS-RET-POLL"
+		self.docstatus = 0
+		self.filing_status = "Generating TXT"
+		self.txt_file = None
+		self.filing_actions = [
+			frappe._dict(
+				name="row-1", request_type="Generate TXT", status="created", job_id=job_id, creation_time=None
+			)
+		]
+		self.saved = 0
+
+	def get(self, key):
+		return getattr(self, key, None)
+
+	def get_open_job(self):
+		row = self.filing_actions[0]
+		return {"request_type": row.request_type, "job_id": row.job_id, "row": row.name}
+
+	def set_status(self, status, save=True):
+		self.filing_status = status
+
+	def add_action(self, request_type, status, message=None, save=True, **kwargs):
+		self.filing_actions.append(frappe._dict(request_type=request_type, status=status, message=message))
+
+	def save(self, **kwargs):
+		self.saved += 1
+
+	def reload(self):
+		pass
+
+	def db_set(self, key, value):
+		setattr(self, key, value)
+
+
+class _PollClient:
+	def __init__(self, data, sandbox_mode=1, fetch_error=None):
+		self.data = data
+		self.sandbox_mode = sandbox_mode
+		self.fetch_error = fetch_error
+		self.fetched = []
+
+	def request(self, method, endpoint, params=None, **kwargs):
+		return {"code": 200, "data": {"job_id": params["job_id"], **self.data}}
+
+	def fetch_file(self, url):
+		self.fetched.append(url)
+		if self.fetch_error:
+			raise self.fetch_error
+		return b"TXT"
+
+
+class TestPollClosesUnusableJobs(FrappeTestCase):
+	def _poll(self, doc, client):
+		with (
+			patch.object(filing.frappe, "get_doc", return_value=doc),
+			patch.object(filing, "SandboxTDSClient", return_value=client),
+			patch.object(filing, "_attach"),
+			patch.object(filing.telemetry, "on_filing_step_finished") as finished,
+			patch.object(filing.frappe, "log_error"),
+		):
+			filing.poll_return(doc.name)
+		return finished
+
+	def test_test_host_sample_job_fails_the_step_without_downloading(self):
+		doc = _PollDoc()
+		client = _PollClient(
+			{"job_id": "SAMPLE-JOB", "status": "succeeded", "txt_url": "https://s3.example/report.txt"}
+		)
+		finished = self._poll(doc, client)
+
+		self.assertEqual(doc.filing_status, "Failed")
+		self.assertEqual(doc.filing_actions[0].status, "failed")
+		self.assertIn("test environment", doc.filing_actions[-1].message)
+		self.assertEqual(client.fetched, [])
+		self.assertEqual(finished.call_args[0][2], "sample_response")
+
+	def test_different_job_on_live_host_is_not_used(self):
+		doc = _PollDoc()
+		client = _PollClient(
+			{"job_id": "OTHER-JOB", "status": "succeeded", "txt_url": "https://s3.example/report.txt"},
+			sandbox_mode=0,
+		)
+		self._poll(doc, client)
+
+		self.assertEqual(doc.filing_status, "Failed")
+		self.assertNotIn("test environment", doc.filing_actions[-1].message)
+		self.assertEqual(client.fetched, [])
+
+	def test_result_download_failure_closes_the_job(self):
+		doc = _PollDoc()
+		client = _PollClient(
+			{"status": "succeeded", "txt_url": "https://s3.example/report.txt"},
+			fetch_error=frappe.ValidationError(
+				"404 Not Found for url: https://s3.example/report.txt?X-Amz-Signature=abc"
+			),
+		)
+		finished = self._poll(doc, client)
+
+		self.assertEqual(doc.filing_status, "Failed")
+		self.assertEqual(doc.filing_actions[0].status, "failed")
+		self.assertIn("404 Not Found", doc.filing_actions[-1].message)
+		self.assertNotIn("X-Amz-Signature", doc.filing_actions[-1].message)
+		self.assertEqual(finished.call_args[0][2], "result_failed")
+
+	def test_matching_success_still_advances(self):
+		doc = _PollDoc()
+		client = _PollClient({"status": "succeeded", "txt_url": "https://s3.example/report.txt"})
+		finished = self._poll(doc, client)
+
+		self.assertEqual(doc.filing_status, "TXT Generated")
+		self.assertEqual(doc.filing_actions[0].status, "succeeded")
+		self.assertEqual(finished.call_args[0][2], "succeeded")
+
+	def test_mock_poll_echoes_the_polled_job(self):
+		data = _mock_response("GET", "tds/reports/txt", params={"job_id": "MOCK-txt-ABCD12345E"})["data"]
+		self.assertEqual(data["job_id"], "MOCK-txt-ABCD12345E")
+
+
 class _RecordingClient:
 	"""Captures what upload_to_presigned_url was called with."""
 
@@ -1101,7 +1221,7 @@ class TestSheetJsonWorkbook(FrappeTestCase):
 			deductor_name="ACME PRIVATE LIMITED",
 			deductor_branch="HO",
 			deductor_gstin="24AAACA1234Z1ZP",
-			deductor_type_code="K",
+			deductor_type_code="K - Company",
 			deductor_email="tds@acme.test",
 			deductor_contact_country_code="91",
 			deductor_contact_number="9876543210",
@@ -1196,6 +1316,12 @@ class TestSheetJsonWorkbook(FrappeTestCase):
 			payer = book["sheets"][0]["blocks"][0]
 			tan = next(v for item in payer["items"] for k, v in item.items() if k == "tan")
 			self.assertEqual(tan, "MUMW03366G", workbook)
+
+	def test_deductor_type_sends_only_the_itd_code(self):
+		book = self._build("form138_workbook")
+		payer = book["sheets"][0]["blocks"][0]
+		value = next(v for item in payer["items"] for k, v in item.items() if k == "deductor_type")
+		self.assertEqual(value, "K")
 
 	def test_dates_are_epoch_milliseconds(self):
 		book = self._build("form138_workbook")

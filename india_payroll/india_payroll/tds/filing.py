@@ -472,6 +472,30 @@ def poll_return(docname: str) -> None:
 	data = _data(resp)
 	status = str(data.get("status") or "").lower()
 
+	# Sandbox's test host answers every status check with the same sample job.
+	returned_job_id = data.get("job_id")
+	if returned_job_id and returned_job_id != job["job_id"]:
+		if client.sandbox_mode:
+			message = _(
+				"Sandbox's test environment does not process jobs. It answered job {0} with a fixed "
+				"sample (job {1}), so no {2} result was produced. The request and the upload went "
+				"through; use live credentials to run {2}."
+			)
+		else:
+			message = _(
+				"Sandbox answered job {0} with a different job ({1}), so its result was not used. "
+				"Run {2} again to create a fresh job."
+			)
+		_stop_job(
+			doc,
+			job["row"],
+			step,
+			"failed",
+			message.format(job["job_id"], returned_job_id, spec["label"]),
+			"sample_response",
+		)
+		return
+
 	if status in FAILURE_STATUSES:
 		_update_action(doc, job["row"], status)
 		_fail(doc, client, step, data)
@@ -479,8 +503,28 @@ def poll_return(docname: str) -> None:
 		return
 
 	if status in SUCCESS_STATUSES:
+		frappe.db.savepoint("tds_job_result")
+		try:
+			_HANDLE_RESULT[step](doc, client, data)
+		except Exception as e:
+			# Left open, the poller would retry and fail the same way every five minutes.
+			frappe.db.rollback(save_point="tds_job_result")
+			frappe.log_error(title=f"TDS {spec['label']} result failed for {doc.name}")
+			doc.reload()
+			_stop_job(
+				doc,
+				job["row"],
+				step,
+				"failed",
+				_(
+					"Sandbox finished job {0}, but its result could not be saved: {1} Run {2} again "
+					"to create a fresh job."
+				).format(job["job_id"], re.sub(r"\?\S*", "", str(e))[:300], spec["label"]),
+				"result_failed",
+			)
+			return
+
 		_update_action(doc, job["row"], "succeeded")
-		_HANDLE_RESULT[step](doc, client, data)
 		doc.set_status(spec["done"], save=False)
 		doc.save(ignore_permissions=True)
 		telemetry.on_filing_step_finished(doc, step, "succeeded")
@@ -495,39 +539,43 @@ def poll_return(docname: str) -> None:
 	# later means the PUT never registered. Sandbox has no re-trigger mechanism, so
 	# the only remedy is a fresh job — fail early rather than burn the full timeout.
 	if status == "created" and age and age > MAX_CREATED_MINUTES * 60:
-		_update_action(doc, job["row"], "failed")
-		doc.set_status("Failed", save=False)
-		doc.add_action(
-			spec["label"],
-			"Failed",
-			message=_(
+		_stop_job(
+			doc,
+			job["row"],
+			step,
+			"failed",
+			_(
 				"Sandbox job {0} is still awaiting its payload after {1} minutes, so the upload did not "
 				"register. Check the PUT row in Integration Request for the storage response, then run "
 				"{2} again to create a fresh job (presigned URLs cannot be reused)."
 			).format(job["job_id"], MAX_CREATED_MINUTES, spec["label"]),
-			save=False,
+			"stalled",
 		)
-		doc.save(ignore_permissions=True)
-		telemetry.on_filing_step_finished(doc, step, "stalled")
 		return
 
 	if age and age > MAX_JOB_AGE_MINUTES * 60:
-		_update_action(doc, job["row"], "timed_out")
-		doc.set_status("Failed", save=False)
-		doc.add_action(
-			spec["label"],
-			"Failed",
-			message=_("Sandbox job {0} did not complete within {1} minutes (last status: {2}).").format(
+		_stop_job(
+			doc,
+			job["row"],
+			step,
+			"timed_out",
+			_("Sandbox job {0} did not complete within {1} minutes (last status: {2}).").format(
 				job["job_id"], MAX_JOB_AGE_MINUTES, status or _("unknown")
 			),
-			save=False,
+			"timed_out",
 		)
-		doc.save(ignore_permissions=True)
-		telemetry.on_filing_step_finished(doc, step, "timed_out")
 		return
 
 	_update_action(doc, job["row"], status or "polled")
 	doc.save(ignore_permissions=True)
+
+
+def _stop_job(doc, row_name: str, step: str, action_status: str, message: str, outcome: str) -> None:
+	_update_action(doc, row_name, action_status)
+	doc.set_status("Failed", save=False)
+	doc.add_action(STEP_SPECS[step]["label"], "Failed", message=message[:500], save=False)
+	doc.save(ignore_permissions=True)
+	telemetry.on_filing_step_finished(doc, step, outcome)
 
 
 def _job_age_seconds(doc, row_name: str) -> float | None:

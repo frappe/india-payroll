@@ -61,7 +61,9 @@ def _mock_endpoint_kind(endpoint: str) -> str:
 	return "unknown"
 
 
-def _mock_response(method: str, endpoint: str, json_body: dict | None = None) -> dict:
+def _mock_response(
+	method: str, endpoint: str, json_body: dict | None = None, params: dict | None = None
+) -> dict:
 	"""Canned Sandbox responses for offline mock mode (SandboxTDSClient.mock).
 
 	Mirrors the documented job-based contract: a POST creates a job and returns
@@ -98,7 +100,7 @@ def _mock_response(method: str, endpoint: str, json_body: dict | None = None) ->
 			data[field] = f"{MOCK_SCHEME}upload/{kind}/{field}"
 		return {"code": 200, "data": data}
 
-	data = {"status": "succeeded", "job_id": f"MOCK-{kind}"}
+	data = {"status": "succeeded", "job_id": (params or {}).get("job_id") or f"MOCK-{kind}"}
 	if kind == "potential-notices":
 		data["potential_notice_report_url"] = f"{MOCK_SCHEME}result/potential-notices.json"
 	elif kind == "txt":
@@ -341,7 +343,7 @@ class SandboxTDSClient:
 		Re-authenticates once on a 401 before giving up.
 		"""
 		if self.mock:
-			resp = _mock_response(method, endpoint, json_body)
+			resp = _mock_response(method, endpoint, json_body, params)
 			self._log_request(
 				url=f"{MOCK_SCHEME}{endpoint.lstrip('/')}",
 				method=method,

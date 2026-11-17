@@ -157,6 +157,11 @@ def _epoch_ms(value) -> int | None:
 	return int(get_datetime(value).timestamp() * 1000)
 
 
+def _code(value) -> str | None:
+	value = _text(value)
+	return value.split(" - ", 1)[0] if value else None
+
+
 def _text(value) -> str | None:
 	value = (value or "").strip() if isinstance(value, str) else value
 	return value or None
@@ -551,7 +556,7 @@ def _build_138(doc) -> dict:
 								_text(doc.deductor_contact_country_code) or DEFAULT_DIALLING_CODE,
 							),
 							("contact_number", _text(doc.deductor_contact_number)),
-							("deductor_type", _text(doc.deductor_type_code)),
+							("deductor_type", _code(doc.deductor_type_code)),
 							("government_state_code", _text(doc.government_state_code)),
 							("ministry_code", _text(doc.ministry_code)),
 							("ministry_name_other", _text(doc.ministry_name_other)),
