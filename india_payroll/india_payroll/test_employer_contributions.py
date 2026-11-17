@@ -4,6 +4,7 @@
 import frappe
 from erpnext.setup.doctype.employee.test_employee import make_employee
 from frappe.utils import flt
+from hrms.hr.doctype.job_offer.job_offer import get_breakup_rows
 from hrms.payroll.doctype.salary_slip.test_salary_slip import make_salary_component
 from hrms.payroll.doctype.salary_structure.test_salary_structure import (
 	create_salary_structure_assignment,
@@ -208,6 +209,19 @@ class TestEmployerContributions(HRMSTestSuite):
 
 		self.assertNotIn(EPS_COMPONENT, amounts)
 		self.assertEqual(amounts[EPF_EMPLOYER_COMPONENT], 3_000)
+
+	def test_offer_leaves_out_edli_and_admin_but_keeps_them_in_ctc(self):
+		ssa = self._make_epf_assignment("ctc_epf_offer@indiapayroll.com", 15_000.0, _AFTER_REVISION)
+
+		rows = get_breakup_rows(ssa, 12, ssa.ctc)
+		labels = [row["fixed_components"] for row in rows]
+		ctc_row = next(row for row in rows if row["is_summary"] and "CTC" in row["fixed_components"])
+
+		self.assertNotIn(EDLI_COMPONENT, labels)
+		self.assertNotIn(EPF_ADMIN_COMPONENT, labels)
+		self.assertIn(EPF_EMPLOYER_COMPONENT, labels)
+		self.assertIn("Includes Statutory Contributions", ctc_row["fixed_components"])
+		self.assertAlmostEqual(ctc_row["yearly"], flt(ssa.ctc), places=2)
 
 	def test_no_eps_above_the_previous_ceiling(self):
 		ssa = self._make_epf_assignment("ctc_epf_above_old@indiapayroll.com", 20_000.0, _BEFORE_REVISION)
