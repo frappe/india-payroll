@@ -1,6 +1,7 @@
 import datetime
 
 import frappe
+from dateutil.relativedelta import relativedelta
 from frappe.query_builder.functions import Sum
 from frappe.utils import flt, getdate
 
@@ -23,7 +24,9 @@ PT_SALARY_COMPONENT = "Professional Tax"
 #     list of {"effective_from": "YYYY-MM-DD", ...} overrides applied to
 #     salary slips starting on or after that date
 #   special_rules (optional):
-#     women_exemption_upto : women earning ≤ this value are fully exempt
+#     women_exemption_upto      : women earning ≤ this value are fully exempt
+#     senior_citizen_exempt_age : employees who have completed this age
+#                                 (as on the slip start date) are fully exempt
 # ---------------------------------------------------------------------------
 STATE_PT_CONFIG = {
 	# ------------------------------------------------------------------
@@ -51,6 +54,10 @@ STATE_PT_CONFIG = {
 			{"upto": 11999, "amount": 0},
 			{"upto": None, "amount": 200},
 		],
+		"special_rules": {
+			# Employees aged above 65 years are fully exempt
+			"senior_citizen_exempt_age": 65,
+		},
 	},
 	"Jharkhand": {
 		"frequency": "monthly",
@@ -244,9 +251,16 @@ def apply_professional_tax(doc, method=None) -> None:
 		)
 		return
 
-	state_config = _get_state_config(employment_state, getdate(doc.start_date))
-	gender = frappe.db.get_value("Employee", doc.employee, "gender")
-	payroll_month = getdate(doc.start_date).month
+	start_date = getdate(doc.start_date)
+	state_config = _get_state_config(employment_state, start_date)
+	employee = frappe.db.get_value("Employee", doc.employee, ["gender", "date_of_birth"], as_dict=True)
+
+	if _is_senior_citizen_exempt(state_config, employee.date_of_birth, start_date):
+		_update_pt_in_salary_slip(doc, 0)
+		return
+
+	payroll_month = start_date.month
+	gender = employee.gender
 
 	if state_config["frequency"] in ("half-yearly", "yearly"):
 		pt_amount = _compute_pt_periodic(doc, state_config)
@@ -289,6 +303,15 @@ def _get_state_config(state: str, date: datetime.date) -> dict:
 
 	latest = max(revisions, key=lambda r: getdate(r["effective_from"]))
 	return {**state_config, **latest}
+
+
+def _is_senior_citizen_exempt(state_config: dict, date_of_birth, on_date: datetime.date) -> bool:
+	"""Return True if the employee has reached the state's senior citizen exemption age on `on_date`."""
+	exempt_age = state_config.get("special_rules", {}).get("senior_citizen_exempt_age")
+	if not exempt_age or not date_of_birth:
+		return False
+
+	return relativedelta(on_date, getdate(date_of_birth)).years >= exempt_age
 
 
 def _compute_pt_monthly(gross_pay: float, state_config: dict, month: int, gender: str) -> float:
