@@ -13,6 +13,8 @@ from india_payroll.india_payroll.utils import get_slip_ssa_values
 
 CONTRIBUTION_SOURCES = (esi.get_employer_contributions, epf.get_employer_contributions)
 
+LEFT_OUT_OF_OFFER = (epf.EDLI_COMPONENT, epf.EPF_ADMIN_COMPONENT)
+
 # assignment fields the sources read
 CONFIG_FIELDS = ("is_person_with_disability", "epf_applicable", "contribute_on_actual_pf_wage")
 
@@ -69,3 +71,7 @@ def set_slip_employer_contributions(doc) -> None:
 		]
 		if flt(amount) > 0 and frappe.db.exists("Salary Component", component):
 			doc.append("employer_contributions", {"salary_component": component, "amount": amount})
+
+
+def get_components_left_out_of_offer() -> tuple[str, ...]:
+	return LEFT_OUT_OF_OFFER

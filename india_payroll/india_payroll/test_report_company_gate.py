@@ -201,6 +201,24 @@ class TestReportCompanyGate(HRMSTestSuite):
 	def test_ecr_file_requires_company_in_multi_company_mode(self):
 		self.assertRaises(frappe.ValidationError, epf_register.get_ecr_file, dict(_FILTERS))
 
+	def test_ecr_file_requires_register_access(self):
+		user = "test_ecr_no_access@indiapayroll.com"
+		if not frappe.db.exists("User", user):
+			frappe.get_doc(
+				{"doctype": "User", "email": user, "first_name": "ECR", "send_welcome_email": 0}
+			).insert(ignore_permissions=True)
+		frappe.get_doc("User", user).add_roles("Employee")
+
+		frappe.set_user(user)
+		try:
+			self.assertRaises(
+				frappe.PermissionError,
+				epf_register.get_ecr_file,
+				{**_FILTERS, "company": _SLIP_COMPANY},
+			)
+		finally:
+			frappe.set_user("Administrator")
+
 	def test_both_slips_reported_when_multi_company_off(self):
 		self._configure(multi_company=False)
 

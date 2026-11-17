@@ -4,6 +4,7 @@
 import frappe
 from erpnext.setup.doctype.employee.test_employee import make_employee
 from frappe.utils import flt
+from hrms.hr.doctype.job_offer.job_offer import get_breakup_rows
 from hrms.payroll.doctype.salary_slip.test_salary_slip import make_salary_component
 from hrms.payroll.doctype.salary_structure.test_salary_structure import (
 	create_salary_structure_assignment,
@@ -11,12 +12,13 @@ from hrms.payroll.doctype.salary_structure.test_salary_structure import (
 )
 from hrms.tests.utils import HRMSTestSuite
 
+from india_payroll.india_payroll.epf import EDLI_COMPONENT, EPF_ADMIN_COMPONENT, EPF_EMPLOYER_COMPONENT
 from india_payroll.india_payroll.esi import (
 	EMPLOYER_ESI_RATE,
 	ESI_EMPLOYER_COMPONENT,
 	ESI_WAGE_CEILING,
 )
-from india_payroll.install import create_esi_components
+from india_payroll.install import create_epf_components, create_esi_components
 
 _BASIC = "CTC Test Basic"
 _EARNINGS = [
@@ -114,3 +116,20 @@ class TestEmployerContributions(HRMSTestSuite):
 
 		cached = frappe.get_cached_doc("Salary Structure", ssa.salary_structure)
 		self.assertEqual(len(cached.employer_contributions), 0)
+
+	def test_offer_leaves_out_edli_and_admin_but_keeps_them_in_ctc(self):
+		create_epf_components()
+		frappe.db.set_single_value("Payroll Settings", "enable_epf", 1)
+		ssa = self._make_assignment("ctc_epf_offer@indiapayroll.com", "CTC EPF Offer Structure", 15_000.0)
+		ssa.epf_applicable = 1
+		ssa.calculate_ctc_and_gross()
+
+		rows = get_breakup_rows(ssa, 12, ssa.ctc)
+		labels = [row["fixed_components"] for row in rows]
+		ctc_row = next(row for row in rows if row["is_summary"] and "CTC" in row["fixed_components"])
+
+		self.assertNotIn(EDLI_COMPONENT, labels)
+		self.assertNotIn(EPF_ADMIN_COMPONENT, labels)
+		self.assertIn(EPF_EMPLOYER_COMPONENT, labels)
+		self.assertIn("Includes Statutory Contributions", ctc_row["fixed_components"])
+		self.assertAlmostEqual(ctc_row["yearly"], flt(ssa.ctc), places=2)

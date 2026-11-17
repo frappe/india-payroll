@@ -281,6 +281,7 @@ regional_overrides = {
 		"hrms.payroll.doctype.salary_slip.salary_slip.apply_regional_deductions": "india_payroll.india_payroll.salary_slip.apply_regional_deductions",
 		"hrms.payroll.doctype.salary_slip.salary_slip.apply_regional_employer_contributions": "india_payroll.india_payroll.salary_slip.apply_regional_employer_contributions",
 		"hrms.payroll.doctype.salary_structure_assignment.salary_structure_assignment.apply_regional_ctc_components": "india_payroll.india_payroll.employer_contributions.apply_regional_ctc_components",
+		"hrms.hr.doctype.job_offer.job_offer.get_components_left_out_of_offer": "india_payroll.india_payroll.employer_contributions.get_components_left_out_of_offer",
 	}
 }
 
