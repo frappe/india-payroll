@@ -15,6 +15,7 @@ from india_payroll.india_payroll.professional_tax import (
 	_compute_pt_monthly,
 	_fiscal_year_period,
 	_get_state_config,
+	_is_senior_citizen_exempt,
 	_slab_amount,
 )
 from india_payroll.install import create_professional_tax_component
@@ -32,6 +33,21 @@ class TestProfessionalTax(HRMSTestSuite):
 						_compute_pt_monthly(gross_pay, STATE_PT_CONFIG["Maharashtra"], month, "Female"),
 						expected,
 					)
+
+	def test_gujarat_senior_citizen_professional_tax_exemption(self):
+		on_date = frappe.utils.getdate("2026-04-01")
+		cases = (
+			("Gujarat", "1961-04-02", False),  # one day short of 65
+			("Gujarat", "1961-04-01", True),  # turns 65 on the slip start date
+			("Gujarat", "1950-01-01", True),
+			("Gujarat", None, False),
+			("Maharashtra", "1950-01-01", False),  # rule is Gujarat-only
+		)
+		for state, date_of_birth, expected in cases:
+			with self.subTest(state=state, date_of_birth=date_of_birth):
+				self.assertEqual(
+					_is_senior_citizen_exempt(STATE_PT_CONFIG[state], date_of_birth, on_date), expected
+				)
 
 	def test_monthly_state_slabs(self):
 		cases = (
@@ -221,3 +237,45 @@ class TestProfessionalTax(HRMSTestSuite):
 		pt_rows = [d for d in salary_slip.deductions if d.salary_component == "Professional Tax"]
 		self.assertEqual(len(pt_rows), 1)
 		self.assertEqual(pt_rows[0].amount, 750)
+
+	@HRMSTestSuite.change_settings("Payroll Settings", {"enable_professional_tax": 1})
+	def test_gujarat_senior_citizen_not_charged_on_salary_slip(self):
+		"""
+		An employee in Gujarat aged above 65 years is exempt from Professional
+		Tax, even when gross pay is above the ₹12,000 taxable threshold.
+		"""
+		employee = make_employee(
+			"test_gujarat_pt_senior@indiapayroll.com",
+			company="_Test Company",
+			gender="Male",
+			date_of_birth="1955-06-15",
+		)
+
+		salary_structure = make_salary_structure(
+			"Test PT Salary Structure Gujarat Senior",
+			"Monthly",
+			employee=employee,
+			company="_Test Company",
+			currency="INR",
+		)
+
+		ssa = create_salary_structure_assignment(
+			employee,
+			salary_structure.name,
+			from_date="2026-04-01",
+			company="_Test Company",
+		)
+		frappe.db.set_value("Salary Structure Assignment", ssa.name, "employment_state", "Gujarat")
+
+		salary_slip = make_salary_slip(
+			salary_structure.name,
+			employee=employee,
+			posting_date="2026-04-01",
+		)
+		salary_slip.start_date = "2026-04-01"
+		salary_slip.end_date = "2026-04-30"
+		salary_slip.insert()
+
+		self.assertGreater(salary_slip.gross_pay, 12000)
+		pt_rows = [d for d in salary_slip.deductions if d.salary_component == "Professional Tax"]
+		self.assertEqual(pt_rows, [])

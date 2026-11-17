@@ -30,7 +30,7 @@ Indian payroll is governed by a web of statutory rules: provident fund ceilings,
 
 - **Employee Provident Fund (EPF)**: Calculates employee EPF and Voluntary Provident Fund on every salary slip, applies the wage ceiling, reconstructs the employer split (EPF, EPS, EDLI and admin charges), and exports a ready-to-upload ECR file for the EPFO portal.
 - **Employee State Insurance (ESI)**: Deducts the combined ESI contribution for employees within the wage ceiling, with coverage decided on the full monthly gross so a high earner is not wrongly pulled in during a loss-of-pay month.
-- **Professional Tax**: A state-wise slab engine covering monthly and half-yearly states, including special rules such as Maharashtra's February charge and women exemption thresholds.
+- **Professional Tax**: A state-wise slab engine covering monthly and half-yearly states, including special rules such as Maharashtra's February charge and women exemption thresholds, and Gujarat's exemption for employees aged above 65.
 - **Labour Welfare Fund (LWF)**: State-wise employee and employer contributions, applied at the correct monthly, half-yearly, or annual frequency for each state.
 - **Income Tax and TDS**: New and old regime slabs, surcharge with marginal relief, quarterly TDS return (Form 24Q) e-filing through the Sandbox API, and Form 16 generation.
 - **Tax Regime Selector**: A guided page where employees declare their exemptions and investments, compare the old and new tax regimes side by side, and lock in the regime that lowers their tax.
