@@ -15,6 +15,7 @@ from india_payroll.india_payroll.professional_tax import (
 	_compute_pt_monthly,
 	_fiscal_year_period,
 	_get_state_config,
+	_is_senior_citizen_exempt,
 	_slab_amount,
 )
 from india_payroll.install import create_professional_tax_component
@@ -32,6 +33,22 @@ class TestProfessionalTax(HRMSTestSuite):
 						_compute_pt_monthly(gross_pay, STATE_PT_CONFIG["Maharashtra"], month, "Female"),
 						expected,
 					)
+
+	def test_karnataka_senior_citizen_exemption(self):
+		state_config = STATE_PT_CONFIG["Karnataka"]
+		on_date = frappe.utils.getdate("2026-04-30")
+		cases = (
+			("1966-05-01", False),  # turns 60 after the pay period
+			("1966-04-30", True),  # turns 60 on the last day of the pay period
+			("1960-01-15", True),
+			(None, False),  # no date of birth on the employee
+		)
+		for date_of_birth, expected in cases:
+			with self.subTest(date_of_birth=date_of_birth):
+				self.assertEqual(_is_senior_citizen_exempt(state_config, date_of_birth, on_date), expected)
+
+		# States without the rule are unaffected
+		self.assertFalse(_is_senior_citizen_exempt(STATE_PT_CONFIG["Gujarat"], "1950-01-01", on_date))
 
 	def test_monthly_state_slabs(self):
 		cases = (
@@ -221,3 +238,44 @@ class TestProfessionalTax(HRMSTestSuite):
 		pt_rows = [d for d in salary_slip.deductions if d.salary_component == "Professional Tax"]
 		self.assertEqual(len(pt_rows), 1)
 		self.assertEqual(pt_rows[0].amount, 750)
+
+	@HRMSTestSuite.change_settings("Payroll Settings", {"enable_professional_tax": 1})
+	def test_karnataka_senior_citizen_not_charged_on_salary_slip(self):
+		"""
+		An employee in Karnataka aged 60 or above has no Professional Tax
+		deducted, even with gross pay above ₹25,000 in February.
+		"""
+		employee = make_employee(
+			"test_karnataka_pt_senior@indiapayroll.com",
+			company="_Test Company",
+			gender="Male",
+			date_of_birth="1960-06-15",
+		)
+
+		salary_structure = make_salary_structure(
+			"Test PT Salary Structure Karnataka Senior",
+			"Monthly",
+			employee=employee,
+			company="_Test Company",
+			currency="INR",
+		)
+
+		ssa = create_salary_structure_assignment(
+			employee,
+			salary_structure.name,
+			from_date="2026-02-01",
+			company="_Test Company",
+		)
+		frappe.db.set_value("Salary Structure Assignment", ssa.name, "employment_state", "Karnataka")
+
+		salary_slip = make_salary_slip(
+			salary_structure.name,
+			employee=employee,
+			posting_date="2026-02-01",
+		)
+		salary_slip.start_date = "2026-02-01"
+		salary_slip.end_date = "2026-02-28"
+		salary_slip.insert()
+
+		pt_rows = [d for d in salary_slip.deductions if d.salary_component == "Professional Tax"]
+		self.assertEqual(len(pt_rows), 0)
