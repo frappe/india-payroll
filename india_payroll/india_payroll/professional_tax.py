@@ -1,6 +1,7 @@
 import datetime
 
 import frappe
+from dateutil.relativedelta import relativedelta
 from frappe.query_builder.functions import Sum
 from frappe.utils import flt, getdate
 
@@ -26,6 +27,8 @@ PT_SALARY_COMPONENT = "Professional Tax"
 #     women_exemption_upto        : women earning ≤ this value are fully exempt
 #     senior_citizen_exemption_age : employees who have attained this age by
 #                                    the end of the pay period are fully exempt
+#                                    (an age is attained on the day before the
+#                                    birthday)
 # ---------------------------------------------------------------------------
 STATE_PT_CONFIG = {
 	# ------------------------------------------------------------------
@@ -53,6 +56,10 @@ STATE_PT_CONFIG = {
 			{"upto": 11999, "amount": 0},
 			{"upto": None, "amount": 200},
 		],
+		"special_rules": {
+			# Senior citizens aged 65 and above are exempt
+			"senior_citizen_exemption_age": 65,
+		},
 	},
 	"Jharkhand": {
 		"frequency": "monthly",
@@ -98,6 +105,8 @@ STATE_PT_CONFIG = {
 		"special_rules": {
 			# Women earning up to this monthly gross are fully exempt
 			"women_exemption_upto": 25000,
+			# Section 27A: persons who have completed 65 years are exempt
+			"senior_citizen_exemption_age": 65,
 		},
 	},
 	"Meghalaya": {
@@ -309,8 +318,9 @@ def _is_senior_citizen_exempt(state_config: dict, date_of_birth, on_date: dateti
 	if not exemption_age or not date_of_birth:
 		return False
 
-	dob = getdate(date_of_birth)
-	age = on_date.year - dob.year - ((on_date.month, on_date.day) < (dob.month, dob.day))
+	# In Indian law a person attains an age on the day preceding the
+	# anniversary of their birth (Prabhu Dayal Sesma v. State of Rajasthan, 1986)
+	age = relativedelta(on_date + datetime.timedelta(days=1), getdate(date_of_birth)).years
 	return age >= exemption_age
 
 

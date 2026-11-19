@@ -34,21 +34,32 @@ class TestProfessionalTax(HRMSTestSuite):
 						expected,
 					)
 
-	def test_karnataka_senior_citizen_exemption(self):
-		state_config = STATE_PT_CONFIG["Karnataka"]
+	def test_senior_citizen_professional_tax_exemption(self):
+		# Pay period ends on 30 April 2026. An age is attained on the day before
+		# the birthday, so someone born on 1 May attains it on 30 April.
 		on_date = frappe.utils.getdate("2026-04-30")
 		cases = (
-			("1966-05-01", False),  # turns 60 after the pay period
-			("1966-04-30", True),  # turns 60 on the last day of the pay period
-			("1960-01-15", True),
-			(None, False),  # no date of birth on the employee
+			("Karnataka", "1966-05-02", False),  # attains 60 after the pay period
+			("Karnataka", "1966-05-01", True),  # attains 60 on the last day of the pay period
+			("Karnataka", "1966-04-30", True),
+			("Karnataka", "1960-01-15", True),
+			("Karnataka", None, False),  # no date of birth on the employee
+			("Gujarat", "1961-05-02", False),
+			("Gujarat", "1961-05-01", True),
+			("Maharashtra", "1961-05-02", False),
+			("Maharashtra", "1961-05-01", True),
+			("Maharashtra", "1964-01-01", False),  # 62: exempt in Karnataka, not here
+			("Tamil Nadu", "1950-01-01", False),  # state without the rule
 		)
-		for date_of_birth, expected in cases:
-			with self.subTest(date_of_birth=date_of_birth):
-				self.assertEqual(_is_senior_citizen_exempt(state_config, date_of_birth, on_date), expected)
+		for state, date_of_birth, expected in cases:
+			with self.subTest(state=state, date_of_birth=date_of_birth):
+				self.assertEqual(
+					_is_senior_citizen_exempt(STATE_PT_CONFIG[state], date_of_birth, on_date), expected
+				)
 
-		# States without the rule are unaffected
-		self.assertFalse(_is_senior_citizen_exempt(STATE_PT_CONFIG["Gujarat"], "1950-01-01", on_date))
+	def test_maharashtra_keeps_women_exemption_with_senior_citizen_rule(self):
+		self.assertEqual(_compute_pt_monthly(20000, STATE_PT_CONFIG["Maharashtra"], 4, "Female"), 0)
+		self.assertEqual(_compute_pt_monthly(30000, STATE_PT_CONFIG["Maharashtra"], 4, "Female"), 200)
 
 	def test_monthly_state_slabs(self):
 		cases = (
