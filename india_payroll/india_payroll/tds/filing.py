@@ -21,7 +21,7 @@ import zipfile
 
 import frappe
 from frappe import _
-from frappe.utils import flt, get_datetime, now_datetime, time_diff_in_seconds
+from frappe.utils import flt, get_datetime, get_user_display_id, now_datetime, time_diff_in_seconds
 from frappe.utils.file_manager import save_file
 from frappe.utils.scheduler import is_scheduler_inactive
 
@@ -245,7 +245,7 @@ def skip_validation(docname: str, reason: str) -> None:
 	if job and LABEL_TO_STEP.get(job["request_type"]) == "validate":
 		_update_action(doc, job["row"], "abandoned")
 
-	note = _("Validation skipped by {0}. Reason: {1}").format(frappe.session.user, reason)
+	note = _("Validation skipped by {0}. Reason: {1}").format(get_user_display_id(), reason)
 	doc.validation_issues = json.dumps([{"message": note}], indent=2)
 	doc.add_action(STEP_SPECS["validate"]["label"], "skipped", message=note[:500], save=False)
 	doc.set_status(SKIPPED_STATUS, save=False)
